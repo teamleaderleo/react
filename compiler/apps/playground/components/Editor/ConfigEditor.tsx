@@ -21,9 +21,6 @@ import {monacoConfigOptions} from './monacoOptions';
 import {IconChevron} from '../Icons/IconChevron';
 import {CONFIG_PANEL_TRANSITION} from '../../lib/transitionTypes';
 
-// @ts-expect-error - webpack asset/source loader handles .d.ts files as strings
-import compilerTypeDefs from 'babel-plugin-react-compiler/dist/index.d.ts';
-
 loader.config({monaco});
 
 export default function ConfigEditor({
@@ -33,13 +30,14 @@ export default function ConfigEditor({
 }): React.ReactElement {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // TODO: Add back <Activity> after upgrading next.js
   return (
-    // TODO: Use <Activity> when it is compatible with Monaco: https://github.com/suren-atoyan/monaco-react/issues/753
     <>
       <div
         style={{
           display: isExpanded ? 'block' : 'none',
         }}>
+        {/* <Activity mode={isExpanded ? 'visible' : 'hidden'}> */}
         <ExpandedEditor
           onToggle={() => {
             startTransition(() => {
@@ -54,6 +52,8 @@ export default function ConfigEditor({
         style={{
           display: !isExpanded ? 'block' : 'none',
         }}>
+        {/* </Activity>
+        <Activity mode={isExpanded ? 'hidden' : 'visible'}></Activity> */}
         <CollapsedEditor
           onToggle={() => {
             startTransition(() => {
@@ -63,6 +63,7 @@ export default function ConfigEditor({
           }}
         />
       </div>
+      {/* </Activity> */}
     </>
   );
 }
@@ -101,28 +102,18 @@ function ExpandedEditor({
     _: editor.IStandaloneCodeEditor,
     monaco: Monaco,
   ) => void = (_, monaco) => {
-    // Add the babel-plugin-react-compiler type definitions to Monaco
-    monaco.languages.typescript.typescriptDefaults.addExtraLib(
-      //@ts-expect-error - compilerTypeDefs is a string
-      compilerTypeDefs,
-      'file:///node_modules/babel-plugin-react-compiler/dist/index.d.ts',
-    );
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-      target: monaco.languages.typescript.ScriptTarget.Latest,
-      allowNonTsExtensions: true,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      module: monaco.languages.typescript.ModuleKind.ESNext,
-      noEmit: true,
-      strict: false,
-      esModuleInterop: true,
-      allowSyntheticDefaultImports: true,
-      jsx: monaco.languages.typescript.JsxEmit.React,
+    // Enable comments in JSON for JSON5-style config
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+      allowComments: true,
+      trailingCommas: 'ignore',
     });
   };
 
   return (
     <ViewTransition
       update={{[CONFIG_PANEL_TRANSITION]: 'slide-in', default: 'none'}}>
+      {/* enter={{[CONFIG_PANEL_TRANSITION]: 'slide-in', default: 'none'}}
+      exit={{[CONFIG_PANEL_TRANSITION]: 'slide-out', default: 'none'}}> */}
       <Resizable
         minWidth={300}
         maxWidth={600}
@@ -151,8 +142,8 @@ function ExpandedEditor({
             </div>
             <div className="flex-1 border border-gray-300">
               <MonacoEditor
-                path={'config.ts'}
-                language={'typescript'}
+                path={'config.json5'}
+                language={'json'}
                 value={store.config}
                 onMount={handleMount}
                 onChange={handleChange}

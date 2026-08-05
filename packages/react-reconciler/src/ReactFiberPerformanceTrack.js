@@ -36,6 +36,7 @@ import {
 import {
   enableProfilerTimer,
   enableGestureTransition,
+  enablePerformanceIssueReporting,
 } from 'shared/ReactFeatureFlags';
 
 const supportsUserTiming =
@@ -188,7 +189,7 @@ export function popDeepEquality(prev: boolean): void {
 
 const reusableComponentDevToolDetails = {
   color: 'primary',
-  properties: (null: null | Array<[string, string]>),
+  properties: null as null | Array<[string, string]>,
   tooltipText: '',
   track: COMPONENTS_TRACK,
 };
@@ -202,6 +203,15 @@ const reusableComponentOptions: PerformanceMeasureOptions = {
 };
 
 const reusableChangedPropsEntry = ['Changed Props', ''];
+
+const reusableCascadingUpdateIssue = {
+  name: 'React: Cascading Update',
+  severity: 'warning',
+  description:
+    'A cascading update is an update that is triggered during an ongoing render. This can lead to performance issues.',
+  learnMoreUrl:
+    'https://react.dev/reference/dev-tools/react-performance-tracks#cascading-updates',
+};
 
 const DEEP_EQUALITY_WARNING =
   'This component received deeply equal props. It might benefit from useMemo or the React Compiler in its owner.';
@@ -222,10 +232,10 @@ export function logComponentRender(
   }
   if (supportsUserTiming) {
     const alternate = fiber.alternate;
-    let selfTime: number = (fiber.actualDuration: any);
+    let selfTime: number = fiber.actualDuration as any;
     if (alternate === null || alternate.child !== fiber.child) {
       for (let child = fiber.child; child !== null; child = child.sibling) {
-        selfTime -= (child.actualDuration: any);
+        selfTime -= child.actualDuration as any;
       }
     }
     const color =
@@ -274,7 +284,7 @@ export function logComponentRender(
             isDeeplyEqual &&
             !alreadyWarnedForDeepEquality &&
             !includesSomeLane(alternate.lanes, committedLanes) &&
-            (fiber.actualDuration: any) > 100
+            (fiber.actualDuration as any) > 100
           ) {
             alreadyWarnedForDeepEquality = true;
             // This is the first component in a subtree which rerendered with deeply equal props
@@ -501,6 +511,7 @@ function logComponentEffectErrored(
           performance.measure.bind(performance, measureName, options),
         );
       } else {
+        // $FlowFixMe[incompatible-type]
         performance.measure(measureName, options);
       }
       performance.clearMeasures(measureName);
@@ -761,6 +772,11 @@ export function logBlockingStart(
             },
           },
         };
+        if (enablePerformanceIssueReporting && isSpawnedUpdate) {
+          // $FlowFixMe[prop-missing] - detail is untyped
+          measureOptions.detail.devtools.performanceIssue =
+            reusableCascadingUpdateIssue;
+        }
 
         if (debugTask) {
           debugTask.run(
@@ -768,6 +784,7 @@ export function logBlockingStart(
             performance.measure.bind(performance, label, measureOptions),
           );
         } else {
+          // $FlowFixMe[incompatible-type]
           performance.measure(label, measureOptions);
         }
         performance.clearMeasures(label);
@@ -874,6 +891,7 @@ export function logGestureStart(
             performance.measure.bind(performance, label, measureOptions),
           );
         } else {
+          // $FlowFixMe[incompatible-type]
           performance.measure(label, measureOptions);
         }
         performance.clearMeasures(label);
@@ -1015,6 +1033,7 @@ export function logTransitionStart(
             performance.measure.bind(performance, label, measureOptions),
           );
         } else {
+          // $FlowFixMe[incompatible-type]
           performance.measure(label, measureOptions);
         }
         performance.clearMeasures(label);
@@ -1549,6 +1568,41 @@ export function logPaintYieldPhase(
         currentTrack,
         LANES_TRACK_GROUP,
         'secondary-light',
+      );
+    }
+  }
+}
+
+export function logApplyGesturePhase(
+  startTime: number,
+  endTime: number,
+  debugTask: null | ConsoleTask,
+): void {
+  if (supportsUserTiming) {
+    if (endTime <= startTime) {
+      return;
+    }
+    if (__DEV__ && debugTask) {
+      debugTask.run(
+        // $FlowFixMe[method-unbinding]
+        console.timeStamp.bind(
+          console,
+          'Create Ghost Tree',
+          startTime,
+          endTime,
+          currentTrack,
+          LANES_TRACK_GROUP,
+          'secondary-dark',
+        ),
+      );
+    } else {
+      console.timeStamp(
+        'Create Ghost Tree',
+        startTime,
+        endTime,
+        currentTrack,
+        LANES_TRACK_GROUP,
+        'secondary-dark',
       );
     }
   }

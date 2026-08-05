@@ -34,7 +34,6 @@ let ReactServerDOMServer;
 let ReactServerDOMStaticServer;
 let ReactServerDOMClient;
 let ReactDOMFizzServer;
-let ReactDOMStaticServer;
 let Suspense;
 let ErrorBoundary;
 let JSDOM;
@@ -61,10 +60,10 @@ describe('ReactFlightDOM', () => {
     FlightReactDOM = require('react-dom');
 
     jest.mock('react-server-dom-webpack/server', () =>
-      require('react-server-dom-webpack/server.node.unbundled'),
+      require('react-server-dom-unbundled/server.node'),
     );
     jest.mock('react-server-dom-webpack/static', () =>
-      require('react-server-dom-webpack/static.node.unbundled'),
+      require('react-server-dom-unbundled/static.node'),
     );
     const WebpackMock = require('./utils/WebpackMock');
     clientExports = WebpackMock.clientExports;
@@ -88,7 +87,6 @@ describe('ReactFlightDOM', () => {
     Suspense = React.Suspense;
     ReactDOMClient = require('react-dom/client');
     ReactDOMFizzServer = require('react-dom/server.node');
-    ReactDOMStaticServer = require('react-dom/static.node');
     ReactServerDOMClient = require('react-server-dom-webpack/client');
 
     ErrorBoundary = class extends React.Component {
@@ -156,6 +154,23 @@ describe('ReactFlightDOM', () => {
       readable,
       writable,
     };
+  }
+
+  function createUnclosingStream(
+    stream: ReadableStream<Uint8Array>,
+  ): ReadableStream<Uint8Array> {
+    const reader = stream.getReader();
+
+    const s = new ReadableStream({
+      async pull(controller) {
+        const {done, value} = await reader.read();
+        if (!done) {
+          controller.enqueue(value);
+        }
+      },
+    });
+
+    return s;
   }
 
   const theInfinitePromise = new Promise(() => {});
@@ -772,7 +787,7 @@ describe('ReactFlightDOM', () => {
     <ClientModule.Component key="this adds instrumentation" />;
   });
 
-  it('throws when accessing a Context.Provider below the client exports', () => {
+  it('does not throw when accessing a Context.Provider from client exports', () => {
     const Context = React.createContext();
     const ClientModule = clientExports({
       Context,
@@ -780,11 +795,60 @@ describe('ReactFlightDOM', () => {
     function dotting() {
       return ClientModule.Context.Provider;
     }
-    expect(dotting).toThrowError(
-      `Cannot render a Client Context Provider on the Server. ` +
-        `Instead, you can export a Client Component wrapper ` +
-        `that itself renders a Client Context Provider.`,
+    expect(dotting).not.toThrowError();
+  });
+
+  it('can render a client Context.Provider from a server component', async () => {
+    // Create a context in a client module
+    const TestContext = React.createContext('default');
+    const ClientModule = clientExports({
+      TestContext,
+    });
+
+    // Client component that reads context
+    function ClientConsumer() {
+      const value = React.useContext(TestContext);
+      return <span>{value}</span>;
+    }
+    const {ClientConsumer: ClientConsumerRef} = clientExports({ClientConsumer});
+
+    function Print({response}) {
+      return use(response);
+    }
+
+    function App({response}) {
+      return (
+        <Suspense fallback={<h1>Loading...</h1>}>
+          <Print response={response} />
+        </Suspense>
+      );
+    }
+
+    // Server component that provides context
+    function ServerApp() {
+      return (
+        <ClientModule.TestContext.Provider value="from-server">
+          <div>
+            <ClientConsumerRef />
+          </div>
+        </ClientModule.TestContext.Provider>
+      );
+    }
+
+    const {writable, readable} = getTestStream();
+    const {pipe} = await serverAct(() =>
+      ReactServerDOMServer.renderToPipeableStream(<ServerApp />, webpackMap),
     );
+    pipe(writable);
+    const response = ReactServerDOMClient.createFromReadableStream(readable);
+
+    const container = document.createElement('div');
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(<App response={response} />);
+    });
+
+    expect(container.innerHTML).toBe('<div><span>from-server</span></div>');
   });
 
   it('should progressively reveal server components', async () => {
@@ -1354,6 +1418,95 @@ describe('ReactFlightDOM', () => {
     expect(reportedErrors).toEqual([]);
   });
 
+  it('should not retain stale error reason after reentrant module chunk initialization', async () => {
+    function MyComponent() {
+      return <div>hello from client component</div>;
+    }
+    const ClientComponent = clientExports(MyComponent);
+
+    let resolveAsyncComponent;
+    async function AsyncComponent() {
+      await new Promise(r => {
+        resolveAsyncComponent = r;
+      });
+      return null;
+    }
+
+    function ServerComponent() {
+      return (
+        <>
+          <ClientComponent />
+          <Suspense>
+            <AsyncComponent />
+          </Suspense>
+        </>
+      );
+    }
+
+    const {writable: flightWritable, readable: flightReadable} =
+      getTestStream();
+    const {writable: fizzWritable, readable: fizzReadable} = getTestStream();
+
+    const {pipe} = await serverAct(() =>
+      ReactServerDOMServer.renderToPipeableStream(
+        <ServerComponent />,
+        webpackMap,
+      ),
+    );
+    pipe(flightWritable);
+
+    let response = null;
+    function getResponse() {
+      if (response === null) {
+        response =
+          ReactServerDOMClient.createFromReadableStream(flightReadable);
+      }
+      return response;
+    }
+
+    // Simulate a module that calls captureOwnerStack() during evaluation.
+    // In Fizz SSR, this causes a reentrant readChunk on the same module chunk.
+    // The reentrant require throws a TDZ error.
+    let evaluatingModuleId = null;
+    const origRequire = global.__webpack_require__;
+    global.__webpack_require__ = function (id) {
+      if (id === evaluatingModuleId) {
+        throw new ReferenceError(
+          "Cannot access 'MyComponent' before initialization",
+        );
+      }
+      const result = origRequire(id);
+      if (result === MyComponent) {
+        evaluatingModuleId = id;
+        if (__DEV__) {
+          React.captureOwnerStack();
+        }
+        evaluatingModuleId = null;
+      }
+      return result;
+    };
+
+    function App() {
+      return use(getResponse());
+    }
+
+    await serverAct(async () => {
+      ReactDOMFizzServer.renderToPipeableStream(<App />).pipe(fizzWritable);
+    });
+
+    global.__webpack_require__ = origRequire;
+
+    // Resolve the async component so the Flight stream closes after the client
+    // module chunk was initialized.
+    await serverAct(async () => {
+      resolveAsyncComponent();
+    });
+
+    const container = document.createElement('div');
+    await readInto(container, fizzReadable);
+    expect(container.innerHTML).toContain('hello from client component');
+  });
+
   it('should be able to recover from a direct reference erroring server-side', async () => {
     const reportedErrors = [];
 
@@ -1551,20 +1704,32 @@ describe('ReactFlightDOM', () => {
       FlightReactDOM.preconnect('c2 before', {crossOrigin: 'anonymous'});
       FlightReactDOM.preload('l before', {as: 'style'});
       FlightReactDOM.preloadModule('lm before');
-      FlightReactDOM.preloadModule('lm2 before', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preloadModule('lm2 before', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'low',
+      });
       FlightReactDOM.preinit('i before', {as: 'script'});
       FlightReactDOM.preinitModule('m before');
-      FlightReactDOM.preinitModule('m2 before', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preinitModule('m2 before', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'high',
+      });
       await 1;
       FlightReactDOM.prefetchDNS('d after');
       FlightReactDOM.preconnect('c after');
       FlightReactDOM.preconnect('c2 after', {crossOrigin: 'anonymous'});
       FlightReactDOM.preload('l after', {as: 'style'});
       FlightReactDOM.preloadModule('lm after');
-      FlightReactDOM.preloadModule('lm2 after', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preloadModule('lm2 after', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'low',
+      });
       FlightReactDOM.preinit('i after', {as: 'script'});
       FlightReactDOM.preinitModule('m after');
-      FlightReactDOM.preinitModule('m2 after', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preinitModule('m2 after', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'high',
+      });
       return <ClientComponent />;
     }
 
@@ -1613,107 +1778,46 @@ describe('ReactFlightDOM', () => {
           <link rel="preconnect" href="c2 before" crossorigin="" />
           <link rel="preload" as="style" href="l before" />
           <link rel="modulepreload" href="lm before" />
-          <link rel="modulepreload" href="lm2 before" crossorigin="" />
+          <link
+            rel="modulepreload"
+            href="lm2 before"
+            crossorigin=""
+            fetchpriority="low"
+          />
           <script async="" src="i before" />
           <script type="module" async="" src="m before" />
-          <script type="module" async="" src="m2 before" crossorigin="" />
+          <script
+            type="module"
+            async=""
+            src="m2 before"
+            crossorigin=""
+            fetchpriority="high"
+          />
           <link rel="dns-prefetch" href="d after" />
           <link rel="preconnect" href="c after" />
           <link rel="preconnect" href="c2 after" crossorigin="" />
           <link rel="preload" as="style" href="l after" />
           <link rel="modulepreload" href="lm after" />
-          <link rel="modulepreload" href="lm2 after" crossorigin="" />
+          <link
+            rel="modulepreload"
+            href="lm2 after"
+            crossorigin=""
+            fetchpriority="low"
+          />
           <script async="" src="i after" />
           <script type="module" async="" src="m after" />
-          <script type="module" async="" src="m2 after" crossorigin="" />
+          <script
+            type="module"
+            async=""
+            src="m2 after"
+            crossorigin=""
+            fetchpriority="high"
+          />
         </head>
         <body />
       </html>,
     );
     expect(getMeaningfulChildren(container)).toEqual(<p>hello world</p>);
-  });
-
-  // @gate enablePostpone
-  it('should allow postponing in Flight through a serialized promise', async () => {
-    const Context = React.createContext();
-    const ContextProvider = Context.Provider;
-
-    function Foo() {
-      const value = React.use(React.useContext(Context));
-      return <span>{value}</span>;
-    }
-
-    const ClientModule = clientExports({
-      ContextProvider,
-      Foo,
-    });
-
-    async function getFoo() {
-      React.unstable_postpone('foo');
-    }
-
-    function App() {
-      return (
-        <ClientModule.ContextProvider value={getFoo()}>
-          <div>
-            <Suspense fallback="loading...">
-              <ClientModule.Foo />
-            </Suspense>
-          </div>
-        </ClientModule.ContextProvider>
-      );
-    }
-
-    const {writable, readable} = getTestStream();
-
-    const {pipe} = await serverAct(() =>
-      ReactServerDOMServer.renderToPipeableStream(<App />, webpackMap),
-    );
-    pipe(writable);
-
-    let response = null;
-    function getResponse() {
-      if (response === null) {
-        response = ReactServerDOMClient.createFromReadableStream(readable);
-      }
-      return response;
-    }
-
-    function Response() {
-      return getResponse();
-    }
-
-    const errors = [];
-    function onError(error, errorInfo) {
-      errors.push(error, errorInfo);
-    }
-    const result = await serverAct(() =>
-      ReactDOMStaticServer.prerenderToNodeStream(<Response />, {
-        onError,
-      }),
-    );
-
-    const prelude = await new Promise((resolve, reject) => {
-      let content = '';
-      result.prelude.on('data', chunk => {
-        content += Buffer.from(chunk).toString('utf8');
-      });
-      result.prelude.on('error', error => {
-        reject(error);
-      });
-      result.prelude.on('end', () => resolve(content));
-    });
-
-    expect(errors).toEqual([]);
-    const doc = new JSDOM(prelude).window.document;
-    expect(getMeaningfulChildren(doc)).toEqual(
-      <html>
-        <head />
-        <body>
-          <div>loading...</div>
-        </body>
-      </html>,
-    );
   });
 
   it('should support float methods when rendering in Fizz', async () => {
@@ -1729,20 +1833,32 @@ describe('ReactFlightDOM', () => {
       FlightReactDOM.preconnect('c2 before', {crossOrigin: 'anonymous'});
       FlightReactDOM.preload('l before', {as: 'style'});
       FlightReactDOM.preloadModule('lm before');
-      FlightReactDOM.preloadModule('lm2 before', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preloadModule('lm2 before', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'low',
+      });
       FlightReactDOM.preinit('i before', {as: 'script'});
       FlightReactDOM.preinitModule('m before');
-      FlightReactDOM.preinitModule('m2 before', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preinitModule('m2 before', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'high',
+      });
       await 1;
       FlightReactDOM.prefetchDNS('d after');
       FlightReactDOM.preconnect('c after');
       FlightReactDOM.preconnect('c2 after', {crossOrigin: 'anonymous'});
       FlightReactDOM.preload('l after', {as: 'style'});
       FlightReactDOM.preloadModule('lm after');
-      FlightReactDOM.preloadModule('lm2 after', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preloadModule('lm2 after', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'low',
+      });
       FlightReactDOM.preinit('i after', {as: 'script'});
       FlightReactDOM.preinitModule('m after');
-      FlightReactDOM.preinitModule('m2 after', {crossOrigin: 'anonymous'});
+      FlightReactDOM.preinitModule('m2 after', {
+        crossOrigin: 'anonymous',
+        fetchPriority: 'high',
+      });
       return <ClientComponent />;
     }
 
@@ -1796,16 +1912,38 @@ describe('ReactFlightDOM', () => {
           <link rel="preconnect" href="c2 after" crossorigin="" />
           <script async="" src="i before" />
           <script type="module" async="" src="m before" />
-          <script type="module" async="" src="m2 before" crossorigin="" />
+          <script
+            type="module"
+            async=""
+            src="m2 before"
+            crossorigin=""
+            fetchpriority="high"
+          />
           <script async="" src="i after" />
           <script type="module" async="" src="m after" />
-          <script type="module" async="" src="m2 after" crossorigin="" />
+          <script
+            type="module"
+            async=""
+            src="m2 after"
+            crossorigin=""
+            fetchpriority="high"
+          />
           <link rel="preload" as="style" href="l before" />
           <link rel="modulepreload" href="lm before" />
-          <link rel="modulepreload" href="lm2 before" crossorigin="" />
+          <link
+            rel="modulepreload"
+            href="lm2 before"
+            crossorigin=""
+            fetchpriority="low"
+          />
           <link rel="preload" as="style" href="l after" />
           <link rel="modulepreload" href="lm after" />
-          <link rel="modulepreload" href="lm2 after" crossorigin="" />
+          <link
+            rel="modulepreload"
+            href="lm2 after"
+            crossorigin=""
+            fetchpriority="low"
+          />
         </head>
         <body>
           <p>hello world</p>
@@ -2213,7 +2351,8 @@ describe('ReactFlightDOM', () => {
       pipe(flightWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2237,9 +2376,12 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2303,7 +2445,8 @@ describe('ReactFlightDOM', () => {
     });
 
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2328,9 +2471,12 @@ describe('ReactFlightDOM', () => {
     });
 
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2395,7 +2541,8 @@ describe('ReactFlightDOM', () => {
       pipe(flightWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2419,9 +2566,12 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2484,7 +2634,8 @@ describe('ReactFlightDOM', () => {
       pipe(flightWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2508,9 +2659,12 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2572,7 +2726,8 @@ describe('ReactFlightDOM', () => {
     });
 
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2596,9 +2751,12 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2664,7 +2822,8 @@ describe('ReactFlightDOM', () => {
     });
 
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2688,8 +2847,10 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2736,7 +2897,8 @@ describe('ReactFlightDOM', () => {
     });
 
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     const response =
@@ -2760,7 +2922,8 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2828,8 +2991,9 @@ describe('ReactFlightDOM', () => {
     });
 
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'bam!',
+      'Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      'Error: bam!\n    in <stack>',
     ]);
 
     const response =
@@ -2853,8 +3017,9 @@ describe('ReactFlightDOM', () => {
       ).pipe(fizzWritable);
     });
     assertConsoleErrorDev([
-      'The render was aborted by the server without a reason.',
-      'bam!',
+      '[Server] Error: The render was aborted by the server without a reason.' +
+        '\n    in <stack>',
+      '[Server] Error: bam!\n    in <stack>',
     ]);
 
     expect(shellErrors).toEqual([]);
@@ -2870,7 +3035,6 @@ describe('ReactFlightDOM', () => {
     );
   });
 
-  // @gate enableHalt || enablePostpone
   it('can prerender', async () => {
     let resolveGreeting;
     const greetingPromise = new Promise(resolve => {
@@ -2932,7 +3096,6 @@ describe('ReactFlightDOM', () => {
     expect(getMeaningfulChildren(container)).toEqual(<div>hello world</div>);
   });
 
-  // @gate enableHalt
   it('does not propagate abort reasons errors when aborting a prerender', async () => {
     let resolveGreeting;
     const greetingPromise = new Promise(resolve => {
@@ -3015,8 +3178,6 @@ describe('ReactFlightDOM', () => {
     expect(getMeaningfulChildren(container)).toEqual(<div>loading...</div>);
   });
 
-  // This could be a bug. Discovered while making enableAsyncDebugInfo dynamic for www.
-  // @gate enableHalt || enablePostpone || (enableAsyncDebugInfo && __DEV__)
   it('will leave async iterables in an incomplete state when halting', async () => {
     let resolve;
     const wait = new Promise(r => (resolve = r));
@@ -3055,7 +3216,7 @@ describe('ReactFlightDOM', () => {
     const {prelude} = await pendingResult;
 
     const result = await ReactServerDOMClient.createFromReadableStream(
-      Readable.toWeb(prelude),
+      createUnclosingStream(Readable.toWeb(prelude)),
     );
 
     const iterator = result.multiShotIterable[Symbol.asyncIterator]();
@@ -3075,7 +3236,6 @@ describe('ReactFlightDOM', () => {
     expect(await race).toBe('timeout');
   });
 
-  // @gate enableHalt
   it('will halt unfinished chunks inside Suspense when aborting a prerender', async () => {
     const controller = new AbortController();
     function ComponentThatAborts() {

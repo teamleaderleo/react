@@ -23,10 +23,20 @@ import type {UnknownSuspendersReason} from '../constants';
 
 export type BrowserTheme = 'dark' | 'light';
 
+export type WallMessage = {
+  event: string,
+  payload?: mixed,
+};
+
 export type Wall = {
-  // `listen` returns the "unlisten" function.
-  listen: (fn: Function) => Function,
-  send: (event: string, payload: any, transferable?: Array<any>) => void,
+  // A Wall may share its transport with unrelated or legacy messages, so the
+  // Bridge must refine incoming values at the boundary.
+  listen: (fn: (message: mixed) => void) => () => void,
+  send: (
+    event: string,
+    payload: mixed,
+    transferable?: $ReadOnlyArray<mixed>,
+  ) => void,
 };
 
 // WARNING
@@ -82,8 +92,9 @@ export const ComponentFilterDisplayName = 2;
 export const ComponentFilterLocation = 3;
 export const ComponentFilterHOC = 4;
 export const ComponentFilterEnvironmentName = 5;
+export const ComponentFilterActivitySlice = 6;
 
-export type ComponentFilterType = 1 | 2 | 3 | 4 | 5;
+export type ComponentFilterType = 1 | 2 | 3 | 4 | 5 | 6;
 
 // Hide all elements of types in this Set.
 // We hide host components only by default.
@@ -115,11 +126,20 @@ export type EnvironmentNameComponentFilter = {
   value: string,
 };
 
+export type ActivitySliceFilter = {
+  type: 6,
+  activityID: Element['id'],
+  rendererID: number,
+  isValid: boolean,
+  isEnabled: boolean,
+};
+
 export type ComponentFilter =
   | BooleanComponentFilter
   | ElementTypeComponentFilter
   | RegExpComponentFilter
-  | EnvironmentNameComponentFilter;
+  | EnvironmentNameComponentFilter
+  | ActivitySliceFilter;
 
 export type HookName = string | null;
 // Map of hook source ("<filename>:<line-number>:<column-number>") to name.
@@ -146,6 +166,8 @@ export type Plugins = {
 };
 
 export const StrictMode = 1;
+export const ActivityHiddenMode = 2;
+export const ActivityVisibleMode = 3;
 
 // Each element on the frontend corresponds to an ElementID (e.g. a Fiber) on the backend.
 // Some of its information (e.g. id, type, displayName) come from the backend.
@@ -181,6 +203,12 @@ export type Element = {
   // Only true for React versions supporting StrictMode.
   isStrictModeNonCompliant: boolean,
 
+  // Whether this Activity element has mode="hidden".
+  isActivityHidden: boolean,
+
+  // Whether this element is inside a hidden Activity subtree.
+  isInsideHiddenActivity: boolean,
+
   // If component is compiled with Forget, the backend will send its name as Forget(...)
   // Later, on the frontend side, we will strip HOC names and Forget prefix.
   compiledWithForget: boolean,
@@ -194,8 +222,14 @@ export type Rect = {
 };
 
 export type SuspenseTimelineStep = {
-  id: SuspenseNode['id'], // TODO: Will become a group.
+  /**
+   * The first step is either a host root (initial paint) or Activity (Transition).
+   * Subsequent steps are always Suspense nodes.
+   */
+  id: SuspenseNode['id'] | Element['id'], // TODO: Will become a group.
   environment: null | string,
+  rendererID: number,
+  endTime: number,
 };
 
 export type SuspenseNode = {
@@ -207,6 +241,7 @@ export type SuspenseNode = {
   hasUniqueSuspenders: boolean,
   isSuspended: boolean,
   environments: Array<string>,
+  endTime: number,
 };
 
 // Serialized version of ReactIOInfo

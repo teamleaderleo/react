@@ -77,9 +77,11 @@ export type Options = {
   nonce?: string,
   encodeFormAction?: EncodeFormActionCallback,
   temporaryReferences?: TemporaryReferenceSet,
+  unstable_allowPartialStream?: boolean,
   replayConsoleLogs?: boolean,
   environmentName?: string,
   startTime?: number,
+  endTime?: number,
   // For the Edge client we only support a single-direction debug channel.
   debugChannel?: {readable?: ReadableStream, ...},
 };
@@ -103,6 +105,9 @@ function createResponseFromOptions(options?: Options) {
     options && options.temporaryReferences
       ? options.temporaryReferences
       : undefined,
+    options && options.unstable_allowPartialStream
+      ? options.unstable_allowPartialStream
+      : false,
     __DEV__ ? findSourceMapURL : undefined,
     __DEV__ && options ? options.replayConsoleLogs === true : false, // defaults to false
     __DEV__ && options && options.environmentName
@@ -111,6 +116,7 @@ function createResponseFromOptions(options?: Options) {
     __DEV__ && options && options.startTime != null
       ? options.startTime
       : undefined,
+    __DEV__ && options && options.endTime != null ? options.endTime : undefined,
     debugChannel,
   );
 }
@@ -134,7 +140,7 @@ function startReadingFromStream(
     if (done) {
       return onDone();
     }
-    const buffer: Uint8Array = (value: any);
+    const buffer: Uint8Array = value as any;
     processBinaryChunk(response, streamState, buffer);
     return reader.read().then(progress).catch(error);
   }
@@ -200,11 +206,11 @@ export function createFromFetch<T>(
           options.debugChannel.readable,
           handleDone,
         );
-        startReadingFromStream(response, (r.body: any), handleDone, r);
+        startReadingFromStream(response, r.body as any, handleDone, r);
       } else {
         startReadingFromStream(
           response,
-          (r.body: any),
+          r.body as any,
           close.bind(null, response),
           r,
         );
@@ -236,10 +242,10 @@ export function encodeReply(
     if (options && options.signal) {
       const signal = options.signal;
       if (signal.aborted) {
-        abort((signal: any).reason);
+        abort((signal as any).reason);
       } else {
         const listener = () => {
-          abort((signal: any).reason);
+          abort((signal as any).reason);
           signal.removeEventListener('abort', listener);
         };
         signal.addEventListener('abort', listener);

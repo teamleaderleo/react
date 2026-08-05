@@ -28,18 +28,17 @@ import {
 import {
   TREE_OPERATION_ADD,
   TREE_OPERATION_REMOVE,
-  TREE_OPERATION_REMOVE_ROOT,
   TREE_OPERATION_REORDER_CHILDREN,
   TREE_OPERATION_SET_SUBTREE_MODE,
   TREE_OPERATION_UPDATE_ERRORS_OR_WARNINGS,
   TREE_OPERATION_UPDATE_TREE_BASE_DURATION,
+  TREE_OPERATION_APPLIED_ACTIVITY_SLICE_CHANGE,
   LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
   LOCAL_STORAGE_OPEN_IN_EDITOR_URL,
   LOCAL_STORAGE_OPEN_IN_EDITOR_URL_PRESET,
   LOCAL_STORAGE_ALWAYS_OPEN_IN_EDITOR,
   SESSION_STORAGE_RELOAD_AND_PROFILE_KEY,
   SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
-  SESSION_STORAGE_RECORD_TIMELINE_KEY,
   SUSPENSE_TREE_OPERATION_ADD,
   SUSPENSE_TREE_OPERATION_REMOVE,
   SUSPENSE_TREE_OPERATION_REORDER_CHILDREN,
@@ -47,6 +46,7 @@ import {
   SUSPENSE_TREE_OPERATION_SUSPENDERS,
 } from './constants';
 import {
+  ComponentFilterActivitySlice,
   ComponentFilterElementType,
   ComponentFilterLocation,
   ElementTypeHostComponent,
@@ -137,7 +137,7 @@ export function getWrappedDisplayName(
   wrapperName: string,
   fallbackName?: string,
 ): string {
-  const displayName = (outerType: any)?.displayName;
+  const displayName = (outerType as any)?.displayName;
   return (
     displayName || `${wrapperName}(${getDisplayName(innerType, fallbackName)})`
   );
@@ -250,8 +250,8 @@ export function printOperationsArray(operations: Array<number>) {
 
     switch (operation) {
       case TREE_OPERATION_ADD: {
-        const id = ((operations[i + 1]: any): number);
-        const type = ((operations[i + 2]: any): ElementType);
+        const id = operations[i + 1] as any as number;
+        const type = operations[i + 2] as any as ElementType;
 
         i += 3;
 
@@ -263,7 +263,7 @@ export function printOperationsArray(operations: Array<number>) {
           i++; // supportsStrictMode
           i++; // hasOwnerMetadata
         } else {
-          const parentID = ((operations[i]: any): number);
+          const parentID = operations[i] as any as number;
           i++;
 
           i++; // ownerID
@@ -282,21 +282,15 @@ export function printOperationsArray(operations: Array<number>) {
         break;
       }
       case TREE_OPERATION_REMOVE: {
-        const removeLength = ((operations[i + 1]: any): number);
+        const removeLength = operations[i + 1] as any as number;
         i += 2;
 
         for (let removeIndex = 0; removeIndex < removeLength; removeIndex++) {
-          const id = ((operations[i]: any): number);
+          const id = operations[i] as any as number;
           i += 1;
 
           logs.push(`Remove node ${id}`);
         }
-        break;
-      }
-      case TREE_OPERATION_REMOVE_ROOT: {
-        i += 1;
-
-        logs.push(`Remove root ${rootID}`);
         break;
       }
       case TREE_OPERATION_SET_SUBTREE_MODE: {
@@ -309,8 +303,8 @@ export function printOperationsArray(operations: Array<number>) {
         break;
       }
       case TREE_OPERATION_REORDER_CHILDREN: {
-        const id = ((operations[i + 1]: any): number);
-        const numChildren = ((operations[i + 2]: any): number);
+        const id = operations[i + 1] as any as number;
+        const numChildren = operations[i + 2] as any as number;
         i += 3;
         const children = operations.slice(i, i + numChildren);
         i += numChildren;
@@ -374,11 +368,11 @@ export function printOperationsArray(operations: Array<number>) {
         break;
       }
       case SUSPENSE_TREE_OPERATION_REMOVE: {
-        const removeLength = ((operations[i + 1]: any): number);
+        const removeLength = operations[i + 1] as any as number;
         i += 2;
 
         for (let removeIndex = 0; removeIndex < removeLength; removeIndex++) {
-          const id = ((operations[i]: any): number);
+          const id = operations[i] as any as number;
           i += 1;
 
           logs.push(`Remove suspense node ${id}`);
@@ -387,8 +381,8 @@ export function printOperationsArray(operations: Array<number>) {
         break;
       }
       case SUSPENSE_TREE_OPERATION_REORDER_CHILDREN: {
-        const id = ((operations[i + 1]: any): number);
-        const numChildren = ((operations[i + 2]: any): number);
+        const id = operations[i + 1] as any as number;
+        const numChildren = operations[i + 2] as any as number;
         i += 3;
         const children = operations.slice(i, i + numChildren);
         i += numChildren;
@@ -399,8 +393,8 @@ export function printOperationsArray(operations: Array<number>) {
         break;
       }
       case SUSPENSE_TREE_OPERATION_RESIZE: {
-        const id = ((operations[i + 1]: any): number);
-        const numRects = ((operations[i + 2]: any): number);
+        const id = operations[i + 1] as any as number;
+        const numRects = operations[i + 2] as any as number;
         i += 3;
 
         if (numRects === -1) {
@@ -427,19 +421,30 @@ export function printOperationsArray(operations: Array<number>) {
       }
       case SUSPENSE_TREE_OPERATION_SUSPENDERS: {
         i++;
-        const changeLength = ((operations[i++]: any): number);
+        const changeLength = operations[i++] as any as number;
 
         for (let changeIndex = 0; changeIndex < changeLength; changeIndex++) {
           const id = operations[i++];
           const hasUniqueSuspenders = operations[i++] === 1;
+          const endTime = operations[i++] / 1000;
           const isSuspended = operations[i++] === 1;
           const environmentNamesLength = operations[i++];
           i += environmentNamesLength;
           logs.push(
-            `Suspense node ${id} unique suspenders set to ${String(hasUniqueSuspenders)} is suspended set to ${String(isSuspended)} with ${String(environmentNamesLength)} environments`,
+            `Suspense node ${id} unique suspenders set to ${String(hasUniqueSuspenders)} ending at ${String(endTime)} is suspended set to ${String(isSuspended)} with ${String(environmentNamesLength)} environments`,
           );
         }
 
+        break;
+      }
+      case TREE_OPERATION_APPLIED_ACTIVITY_SLICE_CHANGE: {
+        i++;
+        const activitySliceIDChange = operations[i++];
+        logs.push(
+          activitySliceIDChange === 0
+            ? 'Reset applied activity slice'
+            : 'Applied activity slice change to ' + activitySliceIDChange,
+        );
         break;
       }
       default:
@@ -467,7 +472,7 @@ export function getSavedComponentFilters(): Array<ComponentFilter> {
     );
     if (raw != null) {
       const parsedFilters: Array<ComponentFilter> = JSON.parse(raw);
-      return filterOutLocationComponentFilters(parsedFilters);
+      return persistableComponentFilters(parsedFilters);
     }
   } catch (error) {}
   return getDefaultComponentFilters();
@@ -478,16 +483,11 @@ export function setSavedComponentFilters(
 ): void {
   localStorageSetItem(
     LOCAL_STORAGE_COMPONENT_FILTER_PREFERENCES_KEY,
-    JSON.stringify(filterOutLocationComponentFilters(componentFilters)),
+    JSON.stringify(persistableComponentFilters(componentFilters)),
   );
 }
 
-// Following __debugSource removal from Fiber, the new approach for finding the source location
-// of a component, represented by the Fiber, is based on lazily generating and parsing component stack frames
-// To find the original location, React DevTools will perform symbolication, source maps are required for that.
-// In order to start filtering Fibers, we need to find location for all of them, which can't be done lazily.
-// Eager symbolication can become quite expensive for large applications.
-export function filterOutLocationComponentFilters(
+export function persistableComponentFilters(
   componentFilters: Array<ComponentFilter>,
 ): Array<ComponentFilter> {
   // This is just an additional check to preserve the previous state
@@ -496,7 +496,18 @@ export function filterOutLocationComponentFilters(
     return componentFilters;
   }
 
-  return componentFilters.filter(f => f.type !== ComponentFilterLocation);
+  return componentFilters.filter(f => {
+    return (
+      // Following __debugSource removal from Fiber, the new approach for finding the source location
+      // of a component, represented by the Fiber, is based on lazily generating and parsing component stack frames
+      // To find the original location, React DevTools will perform symbolication, source maps are required for that.
+      // In order to start filtering Fibers, we need to find location for all of them, which can't be done lazily.
+      // Eager symbolication can become quite expensive for large applications.
+      f.type !== ComponentFilterLocation &&
+      // Activity slice filters are based on DevTools instance IDs which do not persist across sessions.
+      f.type !== ComponentFilterActivitySlice
+    );
+  });
 }
 
 const vscodeFilepath = 'vscode://file/{path}:{line}:{column}';
@@ -585,7 +596,7 @@ export function parseElementDisplayNameFromBackend(
   }
 
   return {
-    // $FlowFixMe[incompatible-return]
+    // $FlowFixMe[incompatible-type]
     formattedDisplayName: displayName,
     hocDisplayNames,
     compiledWithForget: false,
@@ -639,7 +650,7 @@ export function deletePathInObject(
     const parent = getInObject(object, path.slice(0, length - 1));
     if (parent) {
       if (isArray(parent)) {
-        parent.splice(((last: any): number), 1);
+        parent.splice(last as any as number, 1);
       } else {
         delete parent[last];
       }
@@ -660,7 +671,7 @@ export function renamePathInObject(
       const lastNew = newPath[length - 1];
       parent[lastNew] = parent[lastOld];
       if (isArray(parent)) {
-        parent.splice(((lastOld: any): number), 1);
+        parent.splice(lastOld as any as number, 1);
       } else {
         delete parent[lastOld];
       }
@@ -696,6 +707,7 @@ export type DataType =
   | 'html_all_collection'
   | 'html_element'
   | 'infinity'
+  | '-infinity'
   | 'iterator'
   | 'opaque_iterator'
   | 'nan'
@@ -753,7 +765,7 @@ export function getDataType(data: Object): DataType {
       if (Number.isNaN(data)) {
         return 'nan';
       } else if (!Number.isFinite(data)) {
-        return 'infinity';
+        return data > 0 ? 'infinity' : '-infinity';
       } else {
         return 'number';
       }
@@ -963,6 +975,7 @@ export function formatDataForPreview(
     case 'html_element':
       return `<${truncateForDisplay(data.tagName.toLowerCase())} />`;
     case 'function':
+      // $FlowFixMe[invalid-compare]
       if (typeof data.name === 'function' || data.name === '') {
         return '() => {}';
       }
@@ -1207,6 +1220,7 @@ export function formatDataForPreview(
     case 'boolean':
     case 'number':
     case 'infinity':
+    case '-infinity':
     case 'nan':
     case 'null':
     case 'undefined':
@@ -1280,30 +1294,20 @@ export function getProfilingSettings(): ProfilingSettings {
     recordChangeDescriptions:
       sessionStorageGetItem(SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY) ===
       'true',
-    recordTimeline:
-      sessionStorageGetItem(SESSION_STORAGE_RECORD_TIMELINE_KEY) === 'true',
   };
 }
 
-export function onReloadAndProfile(
-  recordChangeDescriptions: boolean,
-  recordTimeline: boolean,
-): void {
+export function onReloadAndProfile(recordChangeDescriptions: boolean): void {
   sessionStorageSetItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY, 'true');
   sessionStorageSetItem(
     SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY,
     recordChangeDescriptions ? 'true' : 'false',
-  );
-  sessionStorageSetItem(
-    SESSION_STORAGE_RECORD_TIMELINE_KEY,
-    recordTimeline ? 'true' : 'false',
   );
 }
 
 export function onReloadAndProfileFlagsReset(): void {
   sessionStorageRemoveItem(SESSION_STORAGE_RELOAD_AND_PROFILE_KEY);
   sessionStorageRemoveItem(SESSION_STORAGE_RECORD_CHANGE_DESCRIPTIONS_KEY);
-  sessionStorageRemoveItem(SESSION_STORAGE_RECORD_TIMELINE_KEY);
 }
 
 export function unionOfTwoArrays<T>(a: Array<T>, b: Array<T>): Array<T> {

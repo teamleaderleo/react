@@ -42,7 +42,6 @@ import getComponentNameFromFiber from 'react-reconciler/src/getComponentNameFrom
 import isArray from 'shared/isArray';
 import {
   enableSchedulingProfiler,
-  enableHydrationLaneScheduling,
   disableLegacyMode,
 } from 'shared/ReactFeatureFlags';
 import ReactSharedInternals from 'shared/ReactSharedInternals';
@@ -135,7 +134,7 @@ let didWarnAboutFindNodeInStrictMode;
 
 if (__DEV__) {
   didWarnAboutNestedUpdates = false;
-  didWarnAboutFindNodeInStrictMode = ({}: {[string]: boolean});
+  didWarnAboutFindNodeInStrictMode = {} as {[string]: boolean};
 }
 
 function getContextForSubtree(
@@ -340,9 +339,7 @@ export function createHydrationContainer(
   // enqueue the callback if one is provided).
   const current = root.current;
   let lane = requestUpdateLane(current);
-  if (enableHydrationLaneScheduling) {
-    lane = getBumpedLaneForHydrationByLane(lane);
-  }
+  lane = getBumpedLaneForHydrationByLane(lane);
   const update = createUpdate(lane);
   update.callback =
     callback !== undefined && callback !== null ? callback : null;
@@ -557,9 +554,7 @@ export function attemptHydrationAtCurrentPriority(fiber: Fiber): void {
     return;
   }
   let lane = requestUpdateLane(fiber);
-  if (enableHydrationLaneScheduling) {
-    lane = getBumpedLaneForHydrationByLane(lane);
-  }
+  lane = getBumpedLaneForHydrationByLane(lane);
   const root = enqueueConcurrentRenderForLane(fiber, lane);
   if (root !== null) {
     scheduleUpdateOnFiber(root, fiber, lane);
@@ -614,7 +609,7 @@ if (__DEV__) {
     const updated = isArray(obj) ? obj.slice() : {...obj};
     if (index + 1 === path.length) {
       if (isArray(updated)) {
-        updated.splice(((key: any): number), 1);
+        updated.splice(key as any as number, 1);
       } else {
         delete updated[key];
       }
@@ -645,7 +640,7 @@ if (__DEV__) {
       // $FlowFixMe[incompatible-use] number or string is fine here
       updated[newKey] = updated[oldKey];
       if (isArray(updated)) {
-        updated.splice(((oldKey: any): number), 1);
+        updated.splice(oldKey as any as number, 1);
       } else {
         delete updated[oldKey];
       }
@@ -864,7 +859,7 @@ function getLaneLabelMap(): Map<Lane, string> | null {
 
     let lane = 1;
     for (let index = 0; index < TotalLanes; index++) {
-      const label = ((getLabelForLane(lane): any): string);
+      const label = getLabelForLane(lane) as any as string;
       map.set(lane, label);
       lane *= 2;
     }
@@ -885,8 +880,9 @@ export function injectIntoDevTools(): boolean {
     // which may not match for third party renderers.
     reconcilerVersion: ReactVersion,
   };
+  // $FlowFixMe[invalid-compare]
   if (extraDevToolsConfig !== null) {
-    internals.rendererConfig = (extraDevToolsConfig: RendererInspectionConfig);
+    internals.rendererConfig = extraDevToolsConfig as RendererInspectionConfig;
   }
   if (__DEV__) {
     internals.overrideHookState = overrideHookState;

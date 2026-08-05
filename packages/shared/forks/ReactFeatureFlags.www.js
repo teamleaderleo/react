@@ -18,23 +18,25 @@ export const {
   alwaysThrottleRetries,
   disableLegacyContextForFunctionComponents,
   disableSchedulerTimeoutInWorkLoop,
-  enableHiddenSubtreeInsertionEffectCleanup,
   enableInfiniteRenderLoopDetection,
+  enableInfiniteRenderLoopDetectionForceThrow,
+  enableConditionalUseWarning,
   enableNoCloningMemoCache,
   enableObjectFiber,
   enableRetryLaneExpiration,
   enableTransitionTracing,
-  enableTrustedTypesIntegration,
-  renameElementSymbol,
   retryLaneExpirationMs,
   syncLaneExpirationMs,
   transitionLaneExpirationMs,
+  enableSuspenseyImages,
   enableViewTransition,
-  enableComponentPerformanceTrack,
   enableScrollEndPolyfill,
   enableFragmentRefs,
   enableFragmentRefsScrollIntoView,
-  enableAsyncDebugInfo,
+  enableFragmentRefsTextNodes,
+  enableInternalInstanceMap,
+  enableParallelTransitions,
+  enableViewTransitionParentEnterExit,
 } = dynamicFeatureFlags;
 
 // On WWW, __EXPERIMENTAL__ is used for a new modern build.
@@ -44,11 +46,11 @@ export const enableProfilerTimer = __PROFILE__;
 export const enableProfilerCommitHooks = __PROFILE__;
 export const enableProfilerNestedUpdatePhase = __PROFILE__;
 export const enableUpdaterTracking = __PROFILE__;
-
+export const enableTrustedTypesIntegration: boolean = true;
 export const enableSuspenseAvoidThisFallback: boolean = true;
 
+export const enableAsyncDebugInfo: boolean = true;
 export const enableCPUSuspense: boolean = true;
-export const enableUseEffectEventHook: boolean = true;
 export const enableMoveBefore: boolean = false;
 export const disableInputAttributeSyncing: boolean = false;
 export const enableLegacyFBSupport: boolean = true;
@@ -57,7 +59,9 @@ export const enableYieldingBeforePassive: boolean = false;
 
 export const enableThrottledScheduling: boolean = false;
 
-export const enableHydrationLaneScheduling: boolean = true;
+export const enableComponentPerformanceTrack: boolean = true;
+
+export const enablePerformanceIssueReporting: boolean = false;
 
 // Logs additional User Timing API marks for use with an experimental profiling tool.
 export const enableSchedulingProfiler: boolean =
@@ -68,18 +72,19 @@ export const disableLegacyContext = __EXPERIMENTAL__;
 export const enableLegacyCache: boolean = true;
 
 export const enableAsyncIterableChildren: boolean = false;
+export const enableFlightWeakThenables: boolean = false;
 
 export const enableTaint: boolean = false;
-
-export const enablePostpone: boolean = false;
-
-export const enableHalt: boolean = true;
 
 // TODO: www currently relies on this feature. It's disabled in open source.
 // Need to remove it.
 export const disableCommentsAsDOMContainers: boolean = false;
 
 export const enableCreateEventHandleAPI: boolean = true;
+
+export const enableBrowserAPI: boolean = true;
+
+export const enableEffectEventMutationPhase: boolean = true;
 
 export const enableScopeAPI: boolean = true;
 
@@ -99,11 +104,10 @@ export const enableReactTestRendererWarning: boolean = false;
 
 export const disableLegacyMode: boolean = true;
 
-export const enableEagerAlternateStateNodeCleanup: boolean = true;
+export const enableViewTransitionForPersistenceMode: boolean = false;
 
 export const enableGestureTransition: boolean = false;
 
-export const enableSuspenseyImages: boolean = false;
 export const enableFizzBlockingRender: boolean = true;
 export const enableSrcObject: boolean = false;
 export const enableHydrationChangeEvent: boolean = false;
@@ -111,5 +115,20 @@ export const enableDefaultTransitionIndicator: boolean = true;
 
 export const ownerStackLimit = 1e4;
 
+export const enableFragmentRefsInstanceHandles: boolean = true;
+
+export const enableOptimisticKey: boolean = false;
+
+// These flags are only used by eslint-plugin-react-hooks, which has its own
+// fork at ReactFeatureFlags.eslint-plugin.www.js with the www-specific values.
+// Edit that file to change the www values for these flags.
+export const eprh_enableUseKeyedStateCompilerLint: boolean = false;
+export const eprh_enableVerboseNoSetStateInEffectCompilerLint: boolean = false;
+export const eprh_enableExhaustiveEffectDependenciesCompilerLint:
+  | 'off'
+  | 'all'
+  | 'extra-only'
+  | 'missing-only' = 'off';
+
 // Flow magic to verify the exports of this file match the original version.
-((((null: any): ExportsType): FeatureFlagsType): ExportsType);
+null as any as ExportsType as FeatureFlagsType as ExportsType;

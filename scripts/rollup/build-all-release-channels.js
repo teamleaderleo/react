@@ -124,25 +124,34 @@ async function main() {
         throw new Error(`Unknown release channel ${argv.releaseChannel}`);
     }
   } else {
-    // Running locally, no concurrency. Move each channel's build artifacts into
-    // a temporary directory so that they don't conflict.
-    buildForChannel('stable', '', '');
-    const stableDir = tmp.dirSync().name;
-    crossDeviceRenameSync('./build', stableDir);
-    processStable(stableDir);
-    buildForChannel('experimental', '', '');
-    const experimentalDir = tmp.dirSync().name;
-    crossDeviceRenameSync('./build', experimentalDir);
-    processExperimental(experimentalDir);
+    const releaseChannel = argv.releaseChannel;
+    if (releaseChannel === 'stable') {
+      buildForChannel('stable', '', '');
+      processStable('./build');
+    } else if (releaseChannel === 'experimental') {
+      buildForChannel('experimental', '', '');
+      processExperimental('./build');
+    } else {
+      // Running locally, no concurrency. Move each channel's build artifacts into
+      // a temporary directory so that they don't conflict.
+      buildForChannel('stable', '', '');
+      const stableDir = tmp.dirSync().name;
+      crossDeviceRenameSync('./build', stableDir);
+      processStable(stableDir);
+      buildForChannel('experimental', '', '');
+      const experimentalDir = tmp.dirSync().name;
+      crossDeviceRenameSync('./build', experimentalDir);
+      processExperimental(experimentalDir);
 
-    // Then merge the experimental folder into the stable one. processExperimental
-    // will have already removed conflicting files.
-    //
-    // In CI, merging is handled by the GitHub Download Artifacts plugin.
-    mergeDirsSync(experimentalDir + '/', stableDir + '/');
+      // Then merge the experimental folder into the stable one. processExperimental
+      // will have already removed conflicting files.
+      //
+      // In CI, merging is handled by the GitHub Download Artifacts plugin.
+      mergeDirsSync(experimentalDir + '/', stableDir + '/');
 
-    // Now restore the combined directory back to its original name
-    crossDeviceRenameSync(stableDir, './build');
+      // Now restore the combined directory back to its original name
+      crossDeviceRenameSync(stableDir, './build');
+    }
   }
 }
 
@@ -226,6 +235,12 @@ function processStable(buildDir) {
     if (fs.existsSync(buildDir + '/facebook-react-native')) {
       updatePlaceholderReactVersionInCompiledArtifacts(
         buildDir + '/facebook-react-native',
+        rnVersionString
+      );
+
+      // Also save a file with the version number.
+      fs.writeFileSync(
+        buildDir + '/facebook-react-native/VERSION_NATIVE_FB',
         rnVersionString
       );
     }
@@ -338,12 +353,7 @@ function processExperimental(buildDir, version) {
       buildDir + '/facebook-react-native',
       rnVersionString
     );
-
-    // Also save a file with the version number
-    fs.writeFileSync(
-      buildDir + '/facebook-react-native/VERSION_NATIVE_FB',
-      rnVersionString
-    );
+    // NOTE: VERSION_NATIVE_FB is written in processStable
   }
 
   if (fs.existsSync(buildDir + '/react-native')) {
@@ -363,6 +373,12 @@ function processExperimental(buildDir, version) {
   if (fs.existsSync(buildDir + '/sizes')) {
     fs.renameSync(buildDir + '/sizes', buildDir + '/sizes-experimental');
   }
+  if (fs.existsSync(buildDir + '/bundle-sizes.json')) {
+    fs.renameSync(
+      buildDir + '/bundle-sizes.json',
+      buildDir + '/bundle-sizes-experimental.json'
+    );
+  }
 
   // Delete all other artifacts that weren't handled above. We assume they are
   // duplicates of the corresponding artifacts in the stable channel. Ideally,
@@ -374,7 +390,10 @@ function processExperimental(buildDir, version) {
       pathName !== 'facebook-www' &&
       pathName !== 'sizes-experimental'
     ) {
-      spawnSync('rm', ['-rm', buildDir + '/' + pathName]);
+      fs.rmSync(path.join(buildDir, pathName), {
+        recursive: true,
+        force: true,
+      });
     }
   }
 }

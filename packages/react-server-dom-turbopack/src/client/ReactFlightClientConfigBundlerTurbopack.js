@@ -34,6 +34,8 @@ import {
   addChunkDebugInfo,
 } from 'react-client/src/ReactFlightClientConfig';
 
+import hasOwnProperty from 'shared/hasOwnProperty';
+
 export type ServerConsumerModuleMap = null | {
   [clientId: string]: {
     [clientExportName: string]: ClientReferenceManifestEntry,
@@ -161,12 +163,12 @@ function requireAsyncModule(id: string): null | Thenable<any> {
     // Instrument the Promise to stash the result.
     promise.then(
       value => {
-        const fulfilledThenable: FulfilledThenable<mixed> = (promise: any);
+        const fulfilledThenable: FulfilledThenable<mixed> = promise as any;
         fulfilledThenable.status = 'fulfilled';
         fulfilledThenable.value = value;
       },
       reason => {
-        const rejectedThenable: RejectedThenable<mixed> = (promise: any);
+        const rejectedThenable: RejectedThenable<mixed> = promise as any;
         rejectedThenable.status = 'rejected';
         rejectedThenable.reason = reason;
       },
@@ -245,7 +247,10 @@ export function requireModule<T>(metadata: ClientReference<T>): T {
     // default property of this if it was an ESM interop module.
     return moduleExports.__esModule ? moduleExports.default : moduleExports;
   }
-  return moduleExports[metadata[NAME]];
+  if (hasOwnProperty.call(moduleExports, metadata[NAME])) {
+    return moduleExports[metadata[NAME]];
+  }
+  return undefined as any;
 }
 
 export function getModuleDebugInfo<T>(
@@ -258,8 +263,9 @@ export function getModuleDebugInfo<T>(
   const debugInfo: ReactDebugInfo = [];
   let i = 0;
   while (i < chunks.length) {
-    const chunkFilename = chunks[i++];
-    addChunkDebugInfo(debugInfo, chunkFilename);
+    const chunk = chunks[i++];
+    // A merged chunk is `[mergedChunkFilename, ...]`; use its own filename.
+    addChunkDebugInfo(debugInfo, typeof chunk === 'string' ? chunk : chunk[0]);
   }
   return debugInfo;
 }

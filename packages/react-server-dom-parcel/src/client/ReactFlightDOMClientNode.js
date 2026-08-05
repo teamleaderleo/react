@@ -50,9 +50,11 @@ type EncodeFormActionCallback = <A>(
 export type Options = {
   nonce?: string,
   encodeFormAction?: EncodeFormActionCallback,
+  unstable_allowPartialStream?: boolean,
   replayConsoleLogs?: boolean,
   environmentName?: string,
   startTime?: number,
+  endTime?: number,
   // For the Node.js client we only support a single-direction debug channel.
   debugChannel?: Readable,
 };
@@ -85,10 +87,7 @@ export function createFromNodeStream<T>(
 ): Thenable<T> {
   const debugChannel: void | DebugChannel =
     __DEV__ && options && options.debugChannel !== undefined
-      ? {
-          hasReadable: options.debugChannel.readable !== undefined,
-          callback: null,
-        }
+      ? {hasReadable: true, callback: null}
       : undefined;
 
   const response: Response = createResponse(
@@ -99,6 +98,9 @@ export function createFromNodeStream<T>(
     options ? options.encodeFormAction : undefined,
     options && typeof options.nonce === 'string' ? options.nonce : undefined,
     undefined, // TODO: If encodeReply is supported, this should support temporaryReferences
+    options && options.unstable_allowPartialStream
+      ? options.unstable_allowPartialStream
+      : false,
     __DEV__ ? findSourceMapURL : undefined,
     __DEV__ && options ? options.replayConsoleLogs === true : false, // defaults to false
     __DEV__ && options && options.environmentName
@@ -107,6 +109,7 @@ export function createFromNodeStream<T>(
     __DEV__ && options && options.startTime != null
       ? options.startTime
       : undefined,
+    __DEV__ && options && options.endTime != null ? options.endTime : undefined,
     debugChannel,
   );
 

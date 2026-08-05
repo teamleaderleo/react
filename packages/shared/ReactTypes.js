@@ -7,6 +7,12 @@
  * @flow
  */
 
+import type {ReactOptimisticKey} from './ReactSymbols';
+
+export type {ReactOptimisticKey};
+
+export type ReactKey = null | string | ReactOptimisticKey;
+
 export type ReactNode =
   | React$Element<any>
   | ReactPortal
@@ -26,7 +32,7 @@ export type ReactText = string | number;
 export type ReactProvider<T> = {
   $$typeof: symbol | number,
   type: ReactContext<T>,
-  key: null | string,
+  key: ReactKey,
   ref: null,
   props: {
     value: T,
@@ -42,7 +48,7 @@ export type ReactConsumerType<T> = {
 export type ReactConsumer<T> = {
   $$typeof: symbol | number,
   type: ReactConsumerType<T>,
-  key: null | string,
+  key: ReactKey,
   ref: null,
   props: {
     children: (value: T) => ReactNodeList,
@@ -66,7 +72,7 @@ export type ReactContext<T> = {
 
 export type ReactPortal = {
   $$typeof: symbol | number,
-  key: null | string,
+  key: ReactKey,
   containerInfo: any,
   children: ReactNodeList,
   // TODO: figure out the API for cross-renderer implementation.
@@ -120,6 +126,11 @@ export interface PendingThenable<T> extends ThenableImpl<T> {
   _debugInfo?: null | ReactDebugInfo;
 }
 
+export interface WeakPendingThenable<T> extends ThenableImpl<T> {
+  status: 'pending_weak';
+  _debugInfo?: null | ReactDebugInfo;
+}
+
 export interface FulfilledThenable<T> extends ThenableImpl<T> {
   status: 'fulfilled';
   value: T;
@@ -135,14 +146,23 @@ export interface RejectedThenable<T> extends ThenableImpl<T> {
 export type Thenable<T> =
   | UntrackedThenable<T>
   | PendingThenable<T>
+  | WeakPendingThenable<T>
   | FulfilledThenable<T>
   | RejectedThenable<T>;
+
+// A recoverable lets an intermediate renderer defer a subtree to a downstream
+// renderer. It does not produce a value: a renderer either continues through
+// it or interrupts the current render so that a later renderer can recover the
+// subtree.
+export type ReactRecoverable = Error & {
+  $$typeof: symbol,
+};
 
 export type StartTransitionOptions = {
   name?: string,
 };
 
-export type Usable<T> = Thenable<T> | ReactContext<T>;
+export type Usable<T> = Thenable<T> | ReactContext<T> | ReactRecoverable;
 
 export type ReactCustomFormAction = {
   name?: string,
@@ -204,7 +224,7 @@ export type ReactFunctionLocation = [
 export type ReactComponentInfo = {
   +name: string,
   +env?: string,
-  +key?: null | string,
+  +key?: ReactKey,
   +owner?: null | ReactComponentInfo,
   +stack?: null | ReactStackTrace,
   +props?: null | {[name: string]: mixed},
@@ -222,6 +242,14 @@ export type ReactErrorInfoProd = {
   +digest: string,
 };
 
+export type JSONValue =
+  | string
+  | boolean
+  | number
+  | null
+  | {+[key: string]: JSONValue}
+  | $ReadOnlyArray<JSONValue>;
+
 export type ReactErrorInfoDev = {
   +digest?: string,
   +name: string,
@@ -229,6 +257,8 @@ export type ReactErrorInfoDev = {
   +stack: ReactStackTrace,
   +env: string,
   +owner?: null | string,
+  cause?: JSONValue,
+  errors?: JSONValue,
 };
 
 export type ReactErrorInfo = ReactErrorInfoProd | ReactErrorInfoDev;
@@ -284,6 +314,11 @@ export type ViewTransitionClass =
   | string
   | ViewTransitionClassPerType;
 
+export type GestureOptionsRequired = {
+  rangeStart: number,
+  rangeEnd: number,
+};
+
 export type ViewTransitionProps = {
   name?: string,
   children?: ReactNodeList,
@@ -292,10 +327,68 @@ export type ViewTransitionProps = {
   exit?: ViewTransitionClass,
   share?: ViewTransitionClass,
   update?: ViewTransitionClass,
-  onEnter?: (instance: ViewTransitionInstance, types: Array<string>) => void,
-  onExit?: (instance: ViewTransitionInstance, types: Array<string>) => void,
-  onShare?: (instance: ViewTransitionInstance, types: Array<string>) => void,
-  onUpdate?: (instance: ViewTransitionInstance, types: Array<string>) => void,
+  parentEnter?: ViewTransitionClass,
+  parentExit?: ViewTransitionClass,
+  onEnter?: (
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onExit?: (
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onParentEnter?: (
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onParentExit?: (
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onShare?: (
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onUpdate?: (
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onGestureEnter?: (
+    timeline: GestureProvider,
+    options: GestureOptionsRequired,
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onGestureExit?: (
+    timeline: GestureProvider,
+    options: GestureOptionsRequired,
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onGestureParentEnter?: (
+    timeline: GestureProvider,
+    options: GestureOptionsRequired,
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onGestureParentExit?: (
+    timeline: GestureProvider,
+    options: GestureOptionsRequired,
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onGestureShare?: (
+    timeline: GestureProvider,
+    options: GestureOptionsRequired,
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
+  onGestureUpdate?: (
+    timeline: GestureProvider,
+    options: GestureOptionsRequired,
+    instance: ViewTransitionInstance,
+    types: Array<string>,
+  ) => void | (() => void),
 };
 
 export type ActivityProps = {
@@ -312,7 +405,7 @@ export type SuspenseProps = {
   suspenseCallback?: (Set<Wakeable> | null) => mixed,
 
   unstable_avoidThisFallback?: boolean,
-  unstable_expectedLoadTime?: number,
+  defer?: boolean,
   name?: string,
 };
 

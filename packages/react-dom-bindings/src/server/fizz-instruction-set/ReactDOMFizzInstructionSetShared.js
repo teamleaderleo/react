@@ -130,7 +130,12 @@ export function revealCompletedBoundariesWithViewTransitions(
       const idPrefix = '';
       name = '_' + idPrefix + 'T_' + autoNameIdx++ + '_';
     }
-    elementStyle['viewTransitionName'] = name;
+    // If the name isn't valid CSS identifier, base64 encode the name instead.
+    // This doesn't let you select it in custom CSS selectors but it does work in current
+    // browsers.
+    const escapedName =
+      CSS.escape(name) !== name ? 'r-' + btoa(name).replace(/=/g, '') : name;
+    elementStyle['viewTransitionName'] = escapedName;
     shouldStartViewTransition = true;
   }
   try {
@@ -227,6 +232,12 @@ export function revealCompletedBoundariesWithViewTransitions(
               appearingViewTransitions.set(name, null); // mark claimed
             }
           }
+          // Relay the exit to nested ViewTransitions that opted in
+          const relayExitElements =
+            exitElement.querySelectorAll('[vt-parent-exit]');
+          for (let j = 0; j < relayExitElements.length; j++) {
+            applyViewTransitionName(relayExitElements[j], 'vt-parent-exit');
+          }
         }
         node = node.nextSibling;
       }
@@ -240,6 +251,12 @@ export function revealCompletedBoundariesWithViewTransitions(
           null;
         if (!paired) {
           applyViewTransitionName(enterElement, 'vt-enter');
+        }
+        // Relay the enter to nested ViewTransitions that opted in
+        const relayEnterElements =
+          enterElement.querySelectorAll('[vt-parent-enter]');
+        for (let j = 0; j < relayEnterElements.length; j++) {
+          applyViewTransitionName(relayEnterElements[j], 'vt-parent-enter');
         }
         enterElement = enterElement.nextElementSibling;
       }
@@ -378,7 +395,7 @@ export function clientRenderBoundary(
   suspenseNode.data = SUSPENSE_FALLBACK_START_DATA;
   // assign error metadata to first sibling
   const dataset = suspenseIdNode.dataset;
-  if (errorDigest) dataset['dgst'] = errorDigest;
+  if (errorDigest != null) dataset['dgst'] = errorDigest;
   if (errorMsg) dataset['msg'] = errorMsg;
   if (errorStack) dataset['stck'] = errorStack;
   if (errorComponentStack) dataset['cstck'] = errorComponentStack;
@@ -629,25 +646,7 @@ export function listenToFormSubmissionsForReplaying() {
     event.preventDefault();
 
     // Take a snapshot of the FormData at the time of the event.
-    let formData;
-    if (formDataSubmitter) {
-      // The submitter's value should be included in the FormData.
-      // It should be in the document order in the form.
-      // Since the FormData constructor invokes the formdata event it also
-      // needs to be available before that happens so after construction it's too
-      // late. We use a temporary fake node for the duration of this event.
-      // TODO: FormData takes a second argument that it's the submitter but this
-      // is fairly new so not all browsers support it yet. Switch to that technique
-      // when available.
-      const temp = document.createElement('input');
-      temp.name = formDataSubmitter.name;
-      temp.value = formDataSubmitter.value;
-      formDataSubmitter.parentNode.insertBefore(temp, formDataSubmitter);
-      formData = new FormData(form);
-      temp.parentNode.removeChild(temp);
-    } else {
-      formData = new FormData(form);
-    }
+    const formData = new FormData(form, formDataSubmitter);
 
     // Queue for replaying later. This field could potentially be shared with multiple
     // Reacts on the same page since each one will preventDefault for the next one.
