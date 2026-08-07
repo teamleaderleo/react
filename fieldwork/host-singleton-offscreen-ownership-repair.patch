@@ -1,0 +1,30 @@
+diff --git a/packages/react-reconciler/src/ReactFiberCommitWork.js b/packages/react-reconciler/src/ReactFiberCommitWork.js
+--- a/packages/react-reconciler/src/ReactFiberCommitWork.js
++++ b/packages/react-reconciler/src/ReactFiberCommitWork.js
+@@ -1538,11 +1538,13 @@ function commitDeletionEffectsOnFiber(
+         // HostSingleton we warn if you acquire one that is already associated to
+         // a different fiber. To increase our chances of avoiding this, specifically
+         // if you keyed a HostSingleton so there will be a delete followed by a Placement
+-        // we treat detach eagerly here
+-        commitHostSingletonRelease(deletedFiber);
++        // we treat detach eagerly here. A hidden Offscreen subtree has already
++        // released its singleton during the disappear phase.
++        if (!offscreenSubtreeWasHidden) {
++          commitHostSingletonRelease(deletedFiber);
++        }
+ 
+         hostParent = prevHostParent;
+         hostParentIsContainer = prevHostParentIsContainer;
+@@ -2225,7 +2227,11 @@ function commitMutationEffectsOnFiber(
+             safelyDetachRef(current, current.return);
+           }
+         }
+-        if (current !== null && flags & Update) {
++        if (
++          !offscreenSubtreeWasHidden &&
++          current !== null &&
++          flags & Update
++        ) {
+           const newProps = finishedWork.memoizedProps;
+           const oldProps = current.memoizedProps;
+           commitHostUpdate(finishedWork, newProps, oldProps);
