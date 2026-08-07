@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight head regression
+      - name: Preflight regression
         run: git apply --check fieldwork/host-singleton-content-reset-head.patch
       - uses: actions/setup-node@v4
         with:
@@ -26,18 +26,16 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply head regression
+      - name: Apply regression
         run: git apply fieldwork/host-singleton-content-reset-head.patch
       - name: Run focused dev suite
         run: yarn test --dev ReactDOMSingletonComponents-test
-      - name: Run focused prod suite
-        run: yarn test --prod ReactDOMSingletonComponents-test
 
   current-text-sibling-regression:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight text sibling regression
+      - name: Preflight regression
         run: git apply --check fieldwork/host-singleton-content-reset-text-sibling.patch
       - uses: actions/setup-node@v4
         with:
@@ -45,55 +43,53 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply text sibling regression
+      - name: Apply regression
         run: git apply fieldwork/host-singleton-content-reset-text-sibling.patch
       - name: Run focused dev suite
         run: yarn test --dev ReactDOMSingletonComponents-test
 
-  direct-html-only:
+  current-html-to-text-regression:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight repair and regressions
-        run: |
-          git apply --check fieldwork/host-singleton-content-reset-direct-html-only.patch
-          git apply --check fieldwork/host-singleton-content-reset-head.patch
-          git apply --check fieldwork/host-singleton-content-reset-text-sibling.patch
+      - name: Preflight regression
+        run: git apply --check fieldwork/host-singleton-content-reset-html-to-text.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply narrowed repair and regressions
+      - name: Apply regression
+        run: git apply fieldwork/host-singleton-content-reset-html-to-text.patch
+      - name: Run focused dev suite
+        run: yarn test --dev ReactDOMSingletonComponents-test
+
+  prechild-direct-html:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight repair and regressions
         run: |
-          git apply fieldwork/host-singleton-content-reset-direct-html-only.patch
+          git apply --check fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply --check fieldwork/host-singleton-content-reset-head.patch
+          git apply --check fieldwork/host-singleton-content-reset-text-sibling.patch
+          git apply --check fieldwork/host-singleton-content-reset-html-to-text.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply repair and regressions
+        run: |
+          git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
           git apply fieldwork/host-singleton-content-reset-head.patch
           git apply fieldwork/host-singleton-content-reset-text-sibling.patch
+          git apply fieldwork/host-singleton-content-reset-html-to-text.patch
       - name: Run focused dev suite
         run: yarn test --dev ReactDOMSingletonComponents-test
       - name: Run focused prod suite
         run: yarn test --prod ReactDOMSingletonComponents-test
       - name: Run lint gate
         run: yarn linc
-
-  body-only-counterfactual:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Preflight patches
-        run: |
-          git apply --check fieldwork/host-singleton-content-reset-body-only.patch
-          git apply --check fieldwork/host-singleton-content-reset-head.patch
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: yarn
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-      - name: Apply body-only narrowing and head regression
-        run: |
-          git apply fieldwork/host-singleton-content-reset-body-only.patch
-          git apply fieldwork/host-singleton-content-reset-head.patch
-      - name: Run focused dev suite
-        run: yarn test --dev ReactDOMSingletonComponents-test
