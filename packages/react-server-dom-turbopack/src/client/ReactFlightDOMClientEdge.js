@@ -232,7 +232,7 @@ function encodeReply(
   string | URLSearchParams | FormData,
 > /* We don't use URLSearchParams yet but maybe */ {
   return new Promise((resolve, reject) => {
-    const signal = options && options.signal;
+    const signal = options && options.signal ? options.signal : undefined;
     let listener: null | (() => void) = null;
     let settled = false;
 
