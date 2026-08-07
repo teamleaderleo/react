@@ -31,7 +31,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin research/fragment-singleton-observer-lifetime
+          git fetch origin main research/fragment-singleton-observer-lifetime
+          git branch -f main origin/main
           git checkout origin/research/fragment-singleton-observer-lifetime -- packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocument-test.js
           python3 <<'PY'
           from pathlib import Path
