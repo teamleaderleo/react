@@ -1,0 +1,122 @@
+name: Verify Flight product packet
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  focused:
+    if: github.repository == 'teamleaderleo/react' && github.event.pull_request.head.ref == 'repair/flight-encode-reply-abort-listener'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Add asynchronous rejection cleanup control
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-server-dom-webpack/src/__tests__/ReactFlightDOMReply-test.js')
+          text = path.read_text()
+          anchor = "  it('can pass undefined as a reply', async () => {\n"
+          if text.count(anchor) != 1:
+            raise SystemExit('test anchor changed')
+          test = """  it('removes the AbortSignal listener after asynchronous reply rejection', async () => {
+    const listeners = new Set();
+    const signal = {
+      aborted: false,
+      reason: undefined,
+      addEventListener(type, listener) {
+        expect(type).toBe('abort');
+        listeners.add(listener);
+      },
+      removeEventListener(type, listener) {
+        expect(type).toBe('abort');
+        listeners.delete(listener);
+      },
+    };
+    let reject;
+    const iterable = {
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next() {
+        return new Promise((resolve, rejectPromise) => {
+          reject = rejectPromise;
+        });
+      },
+    };
+
+    const bodyPromise = ReactServerDOMClient.encodeReply(iterable, {
+      signal: (signal: any),
+    });
+    expect(listeners.size).toBe(1);
+
+    reject(new Error('async reply failed'));
+    await expect(bodyPromise).rejects.toThrow('async reply failed');
+    expect(listeners.size).toBe(0);
+  });
+
+"""
+          path.write_text(text.replace(anchor, test + anchor))
+          PY
+      - name: Development focused suite
+        run: yarn test ReactFlightDOMReply-test
+      - name: Production focused suite
+        run: yarn test --prod ReactFlightDOMReply-test
+
+  flow:
+    if: github.repository == 'teamleaderleo/react' && github.event.pull_request.head.ref == 'repair/flight-encode-reply-abort-listener'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - dom-browser-webpack
+          - dom-edge-webpack
+          - dom-browser-turbopack
+          - dom-edge-turbopack
+          - dom-browser-parcel
+          - dom-edge-parcel
+          - dom-browser-esm
+          - dom-node-unbundled
+          - dom-browser-fb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn flow ${{ matrix.config }}
+
+  cleanup:
+    if: always() && github.repository == 'teamleaderleo/react' && github.event.pull_request.head.ref == 'repair/flight-encode-reply-abort-listener'
+    needs: [focused, flow]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Restore clean product packet
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          rm .github/workflows/verify-flight-product.yml
+          git config user.name fieldwork-bot
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/verify-flight-product.yml
+          git commit -m "[internal] remove Flight verification carrier"
+          git push origin "HEAD:${BRANCH}"
