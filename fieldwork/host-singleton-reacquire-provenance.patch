@@ -1,18 +1,16 @@
 diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-@@ -300,2 +300,5 @@
+@@ -300,2 +300,3 @@
  let eventsEnabled: ?boolean = null;
  let selectionInformation: null | SelectionInformation = null;
-+const PossiblyWeakSet = typeof WeakSet === 'function' ? WeakSet : Set;
-+let releasedSingletons: WeakSet<Instance> | Set<Instance> =
-+  new PossiblyWeakSet();
-@@ -423,3 +426,4 @@
++const releasedSingletons: Set<Instance> = new Set();
+@@ -423,3 +424,4 @@
  export function prepareForCommit(containerInfo: Container): Object | null {
-+  releasedSingletons = new PossiblyWeakSet();
++  releasedSingletons.clear();
    eventsEnabled = ReactBrowserEventEmitterIsEnabled();
    selectionInformation = getSelectionInformation(containerInfo);
-@@ -4840,8 +4844,11 @@
+@@ -4840,8 +4842,11 @@
 -  const attributes = instance.attributes;
 -  while (attributes.length) {
 -    instance.removeAttributeNode(attributes[0]);
@@ -27,7 +25,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
    setInitialProperties(instance, type, props);
    precacheFiberNode(internalInstanceHandle, instance);
    updateFiberProps(instance, props);
-@@ -4869,4 +4876,5 @@
+@@ -4869,4 +4874,5 @@
    // Only remove state that was represented by this Fiber's props. Attributes
    // added imperatively while React owned the singleton must be preserved.
    detachDeletedInstance(instance);
