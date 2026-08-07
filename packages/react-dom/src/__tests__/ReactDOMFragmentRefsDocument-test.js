@@ -225,6 +225,48 @@ describe('FragmentRefs', () => {
     });
   });
 
+  describe('observers', () => {
+    // @gate enableFragmentRefs
+    it('stops observing a HostSingleton when it leaves the Fragment', async () => {
+      const fragmentRef = React.createRef();
+      const root = ReactDOMClient.createRoot(document);
+
+      function Test({showShell}) {
+        return (
+          <Fragment ref={fragmentRef}>
+            {showShell && (
+              <html>
+                <body />
+              </html>
+            )}
+          </Fragment>
+        );
+      }
+
+      await act(() => {
+        root.render(<Test showShell={true} />);
+      });
+
+      const observer = {
+        observe: jest.fn(),
+        unobserve: jest.fn(),
+      };
+      fragmentRef.current.observeUsing(observer);
+      expect(observer.observe).toHaveBeenCalledWith(document.documentElement);
+
+      await act(() => {
+        root.render(<Test showShell={false} />);
+      });
+
+      // A HostSingleton remains live in the Document after its Fiber leaves
+      // the Fragment, so the old Fragment must explicitly stop observing it.
+      expect(document.documentElement).not.toBe(null);
+      expect(observer.unobserve).toHaveBeenCalledWith(
+        document.documentElement,
+      );
+    });
+  });
+
   describe('getClientRects()', () => {
     // @gate enableFragmentRefs
     it('measures the host children inside singletons', async () => {
