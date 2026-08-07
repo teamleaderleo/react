@@ -1,0 +1,107 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -490,6 +490,112 @@ describe('ReactDOM HostSingleton', () => {
+     body.dispatchEvent(new document.defaultView.Event('scroll'));
+     expect(onScroll).toHaveBeenCalledTimes(2);
+   });
++
++  it('does not let a hidden singleton update mutate the visible owner', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++
++    root.render(
++      <>
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-owner="hidden" />
++          </html>
++        </React.Activity>
++      </>,
++    );
++    await waitForAll([]);
++    expect(body.getAttribute('data-owner')).toBe('hidden');
++
++    root.render(
++      <>
++        <React.Activity mode="hidden">
++          <html>
++            <head />
++            <body data-owner="hidden" />
++          </html>
++        </React.Activity>
++        <html>
++          <head />
++          <body data-owner="visible" />
++        </html>
++      </>,
++    );
++    await waitForAll([]);
++    expect(body.getAttribute('data-owner')).toBe('visible');
++
++    root.render(
++      <>
++        <React.Activity mode="hidden">
++          <html>
++            <head />
++            <body data-owner="hidden-update" />
++          </html>
++        </React.Activity>
++        <html>
++          <head />
++          <body data-owner="visible" />
++        </html>
++      </>,
++    );
++    await waitForAll([]);
++
++    expect(body.getAttribute('data-owner')).toBe('visible');
++  });
++
++  it('does not release a hidden singleton again when it is deleted', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++
++    root.render(
++      <>
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-owner="hidden" />
++          </html>
++        </React.Activity>
++      </>,
++    );
++    await waitForAll([]);
++
++    root.render(
++      <>
++        <React.Activity mode="hidden">
++          <html>
++            <head />
++            <body data-owner="hidden" />
++          </html>
++        </React.Activity>
++        <html>
++          <head />
++          <body data-owner="visible" />
++        </html>
++      </>,
++    );
++    await waitForAll([]);
++    expect(body.getAttribute('data-owner')).toBe('visible');
++
++    root.render(
++      <html>
++        <head />
++        <body data-owner="visible" />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(body.getAttribute('data-owner')).toBe('visible');
++  });
+ 
+   // @gate __DEV__
+   it('does not release or reacquire singletons when double invoking effects during hydration', async () => {
