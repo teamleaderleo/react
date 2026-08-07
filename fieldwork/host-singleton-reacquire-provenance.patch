@@ -34,7 +34,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -490,6 +490,69 @@
+@@ -490,6 +490,98 @@
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
@@ -67,6 +67,35 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    expect(html.getAttribute('data-theme')).toBe('dark');
 +    expect(html.getAttribute('data-next')).toBe('react');
 +    expect(html.getAttribute('lang')).toBe('fr');
++  });
++
++  it('preserves pre-hydration attributes across a keyed singleton remount', async () => {
++    const html = document.documentElement;
++    html.setAttribute('data-theme', 'dark');
++
++    const root = ReactDOMClient.hydrateRoot(
++      document,
++      <html key="ja" lang="ja" suppressHydrationWarning={true}>
++        <head />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.documentElement).toBe(html);
++    expect(html.getAttribute('data-theme')).toBe('dark');
++
++    root.render(
++      <html key="ko" lang="ko">
++        <head />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.documentElement).toBe(html);
++    expect(html.getAttribute('data-theme')).toBe('dark');
++    expect(html.getAttribute('lang')).toBe('ko');
 +  });
 +
 +  it('uses cold cleanup when a singleton is reacquired in a later commit', async () => {
