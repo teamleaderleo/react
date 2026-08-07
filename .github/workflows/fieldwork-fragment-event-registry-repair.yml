@@ -1,0 +1,69 @@
+name: Fieldwork Fragment event-registry repair
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'repair/fragment-remove-unregistered-listener'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair/fragment-remove-unregistered-listener
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+
+      - name: Materialize one-guard repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main research/fragment-remove-unregistered-listener
+          git branch -f main origin/main
+          git checkout origin/research/fragment-remove-unregistered-listener -- packages/react-dom/src/__tests__/ReactDOMFragmentRefsEventRegistry-test.js
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+          old = '''  if (typeof listeners !== 'undefined' && listeners.length > 0) {\n    traverseFragmentInstancesAndTextInstances(\n      this._fragmentFiber,\n      removeEventListenerFromChild,\n      type,\n      listener,\n      optionsOrUseCapture,\n    );\n    const index = indexOfEventListener(\n      listeners,\n      type,\n      listener,\n      optionsOrUseCapture,\n    );\n    if (this._eventListeners !== null) {\n      this._eventListeners.splice(index, 1);\n    }\n  }'''
+          new = '''  if (typeof listeners !== 'undefined' && listeners.length > 0) {\n    const index = indexOfEventListener(\n      listeners,\n      type,\n      listener,\n      optionsOrUseCapture,\n    );\n    if (index === -1) {\n      return;\n    }\n    traverseFragmentInstancesAndTextInstances(\n      this._fragmentFiber,\n      removeEventListenerFromChild,\n      type,\n      listener,\n      optionsOrUseCapture,\n    );\n    if (this._eventListeners !== null) {\n      this._eventListeners.splice(index, 1);\n    }\n  }'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one removeEventListener block, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Focused dev and prod controls
+        run: |
+          yarn test --dev ReactDOMFragmentRefsEventRegistry-test ReactDOMFragmentRefs-test --runInBand
+          yarn test --prod ReactDOMFragmentRefsEventRegistry-test ReactDOMFragmentRefs-test --runInBand
+
+      - name: Lint changed source
+        run: yarn linc
+
+      - name: Publish workflow-free internal source head
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .fieldwork-fragment-event-registry-repair
+          rm -f .github/workflows/fieldwork-fragment-event-registry-repair.yml
+          git diff --check
+          git config user.name 'fieldwork-bot'
+          git config user.email 'fieldwork-bot@users.noreply.github.com'
+          git add packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
+                  packages/react-dom/src/__tests__/ReactDOMFragmentRefsEventRegistry-test.js \
+                  .fieldwork-fragment-event-registry-repair \
+                  .github/workflows/fieldwork-fragment-event-registry-repair.yml
+          git commit -m 'Fix Fragment unknown event-listener removal'
+          git push origin HEAD:repair/fragment-remove-unregistered-listener
