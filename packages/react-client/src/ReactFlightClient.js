@@ -1549,6 +1549,26 @@ function createLazyChunkWrapper<T>(
     lazyType._debugInfo = chunk._debugInfo;
     // Initialize a store for key validation by the JSX runtime.
     lazyType._store = {validated: validated};
+    lazyType._init = payload => {
+      const value = readChunk(payload);
+      const store = lazyType._store;
+      if (
+        store &&
+        store.validated &&
+        typeof value === 'object' &&
+        value !== null
+      ) {
+        const element: any = value;
+        if (
+          element.$$typeof === REACT_ELEMENT_TYPE &&
+          element._store &&
+          !element._store.validated
+        ) {
+          element._store.validated = store.validated;
+        }
+      }
+      return value;
+    };
   }
   return lazyType;
 }
