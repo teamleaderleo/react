@@ -1,0 +1,79 @@
+diff --git a/packages/react-reconciler/src/ReactFiberBeginWork.js b/packages/react-reconciler/src/ReactFiberBeginWork.js
+--- a/packages/react-reconciler/src/ReactFiberBeginWork.js
++++ b/packages/react-reconciler/src/ReactFiberBeginWork.js
+@@ -2090,8 +2090,12 @@ function updateHostSingleton(
+   if (
+     workInProgress.type !== 'html' &&
+     prevProps !== null &&
++    prevProps.children == null &&
+     shouldSetTextContent(workInProgress.type, prevProps) &&
+-    !shouldSetTextContent(workInProgress.type, nextProps)
++    !(
++      nextProps.children == null &&
++      shouldSetTextContent(workInProgress.type, nextProps)
++    )
+   ) {
+     workInProgress.flags |= ContentReset;
+   }
+diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+--- a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
++++ b/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+@@ -523,19 +523,10 @@ function commitPlacement(finishedWork: Fiber): void {
+ function commitPlacement(finishedWork: Fiber): void {
+   // Recursively insert all host nodes into the parent.
+   let hostParentFiber;
+-  let contentResetParent = null;
+   let parentFragmentInstances = null;
+   let collectFragmentInstances = enableFragmentRefs;
+   let parentFiber = finishedWork.return;
+   while (parentFiber !== null) {
+-    if (
+-      contentResetParent === null &&
+-      supportsSingletons &&
+-      parentFiber.tag === HostSingleton &&
+-      parentFiber.flags & ContentReset
+-    ) {
+-      contentResetParent = parentFiber;
+-    }
+     if (collectFragmentInstances && isFragmentInstanceParent(parentFiber)) {
+       const fragmentInstance: FragmentInstanceType = parentFiber.stateNode;
+       if (parentFragmentInstances === null) {
+@@ -568,15 +559,6 @@ function commitPlacement(finishedWork: Fiber): void {
+     );
+   }
+ 
+-  if (contentResetParent !== null) {
+-    // A body singleton is outside a singleton placement scope, so it is
+-    // skipped while finding the placement parent. Still clear its direct
+-    // content before inserting the replacement child, just like HostComponent.
+-    resetTextContent(contentResetParent.stateNode);
+-    contentResetParent.flags &= ~ContentReset;
+-    trackHostMutation();
+-  }
+-
+   switch (hostParentFiber.tag) {
+     case HostSingleton: {
+       // $FlowFixMe[constant-condition]
+diff --git a/packages/react-reconciler/src/ReactFiberCommitWork.js b/packages/react-reconciler/src/ReactFiberCommitWork.js
+--- a/packages/react-reconciler/src/ReactFiberCommitWork.js
++++ b/packages/react-reconciler/src/ReactFiberCommitWork.js
+@@ -2216,14 +2216,15 @@ function commitMutationEffectsOnFiber(
+     case HostSingleton: {
+       // $FlowFixMe[constant-condition]
+       if (supportsSingletons) {
+-        recursivelyTraverseMutationEffects(root, finishedWork, lanes);
+-        commitReconciliationEffects(finishedWork, lanes);
+         if (finishedWork.flags & ContentReset) {
+-          // If no child placement consumed the reset, clear stale direct
+-          // content now. This covers transitions to empty content.
++          // Direct HTML has no Fiber-managed children. Clear it before visiting
++          // replacement child effects so body placements cannot observe stale
++          // content and do not need special handling in commitPlacement.
+           commitHostResetTextContent(finishedWork);
+           finishedWork.flags &= ~ContentReset;
+         }
++        recursivelyTraverseMutationEffects(root, finishedWork, lanes);
++        commitReconciliationEffects(finishedWork, lanes);
+         if (flags & Ref) {
+           if (!offscreenSubtreeWasHidden && current !== null) {
+             safelyDetachRef(current, current.return);
