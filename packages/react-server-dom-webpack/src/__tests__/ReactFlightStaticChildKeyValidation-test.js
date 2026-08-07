@@ -137,6 +137,8 @@ describe('ReactFlight static child key validation', () => {
       'Each child in a list should have a unique "key" prop.\n\n' +
         'Check the render method of `DynamicList`. See https://react.dev/link/warning-keys for more information.\n' +
         '    in span (at **)\n' +
+        '    in **/ReactFlightStaticChildKeyValidation-test.js:**:** (at **)\n' +
+        '    in Array.map (at **)\n' +
         '    in DynamicList (at **)',
     ]);
   });
