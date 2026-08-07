@@ -1,0 +1,96 @@
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+--- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
++++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+@@ -4860,7 +4860,11 @@ export function releaseSingletonInstance(
+   // dangerouslySetInnerHTML becomes undefined, so an ordinary update can leave
+   // the previous HTML in place. This only handles the release path.
+   if (props.dangerouslySetInnerHTML != null) {
+-    instance.textContent = '';
++    if (type === 'html') {
++      clearContainer(instance);
++    } else {
++      instance.textContent = '';
++    }
+   }
+   clearClickListener(instance as any as HTMLElement);
+ 
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -271,6 +271,78 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.style.backgroundColor).toBe('blue');
+   });
+ 
++  it('preserves document singletons when releasing html with dangerous HTML', async () => {
++    const root = ReactDOMClient.createRoot(document);
++
++    root.render(
++      <html
++        dangerouslySetInnerHTML={{
++          __html:
++            '<head><title>managed title</title></head>' +
++            '<body><div id="managed">managed</div></body>',
++        }}
++      />,
++    );
++    await waitForAll([]);
++
++    const html = document.documentElement;
++    const head = document.head;
++    const body = document.body;
++    expect(head).not.toBe(null);
++    expect(body).not.toBe(null);
++    expect(document.getElementById('managed')).not.toBe(null);
++
++    root.unmount();
++    await waitForAll([]);
++
++    expect(document.documentElement).toBe(html);
++    expect(document.head).toBe(head);
++    expect(document.body).toBe(body);
++    expect(document.getElementById('managed')).toBe(null);
++    expect(document.querySelector('title')).toBe(null);
++  });
++
++  it('preserves document singletons across keyed html release and reacquire', async () => {
++    const root = ReactDOMClient.createRoot(document);
++
++    root.render(
++      <html
++        key="raw"
++        dangerouslySetInnerHTML={{
++          __html:
++            '<head><title>old title</title></head>' +
++            '<body><div id="old-managed">old</div></body>',
++        }}
++      />,
++    );
++    await waitForAll([]);
++
++    const html = document.documentElement;
++    const head = document.head;
++    const body = document.body;
++
++    root.render(
++      <html key="managed">
++        <head>
++          <title>new title</title>
++        </head>
++        <body>
++          <div id="new-managed">new</div>
++        </body>
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.documentElement).toBe(html);
++    expect(document.head).toBe(head);
++    expect(document.body).toBe(body);
++    expect(document.getElementById('old-managed')).toBe(null);
++    expect(document.getElementById('new-managed').textContent).toBe('new');
++    expect(document.title).toBe('new title');
++  });
++
+   // @gate TODO
+   it('clears dangerouslySetInnerHTML when it becomes undefined', async () => {
+     const root = ReactDOMClient.createRoot(document);
