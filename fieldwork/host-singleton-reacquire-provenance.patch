@@ -7,7 +7,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 +const PossiblyWeakSet = typeof WeakSet === 'function' ? WeakSet : Set;
 +let releasedSingletons: WeakSet<Instance> | Set<Instance> =
 +  new PossiblyWeakSet();
-@@ -420,3 +423,4 @@
+@@ -423,3 +426,4 @@
  export function prepareForCommit(containerInfo: Container): Object | null {
 +  releasedSingletons = new PossiblyWeakSet();
    eventsEnabled = ReactBrowserEventEmitterIsEnabled();
@@ -36,7 +36,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -487,6 +487,69 @@
+@@ -490,6 +490,69 @@
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
