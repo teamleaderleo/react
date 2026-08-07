@@ -5,9 +5,14 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
  let eventsEnabled: ?boolean = null;
  let selectionInformation: null | SelectionInformation = null;
 +const PossiblyWeakSet = typeof WeakSet === 'function' ? WeakSet : Set;
-+const releasedSingletons: WeakSet<Instance> | Set<Instance> =
++let releasedSingletons: WeakSet<Instance> | Set<Instance> =
 +  new PossiblyWeakSet();
-@@ -4840,8 +4843,11 @@
+@@ -420,3 +423,4 @@
+ export function prepareForCommit(containerInfo: Container): Object | null {
++  releasedSingletons = new PossiblyWeakSet();
+   eventsEnabled = ReactBrowserEventEmitterIsEnabled();
+   selectionInformation = getSelectionInformation(containerInfo);
+@@ -4840,8 +4844,11 @@
 -  const attributes = instance.attributes;
 -  while (attributes.length) {
 -    instance.removeAttributeNode(attributes[0]);
@@ -22,7 +27,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
    setInitialProperties(instance, type, props);
    precacheFiberNode(internalInstanceHandle, instance);
    updateFiberProps(instance, props);
-@@ -4869,4 +4875,5 @@
+@@ -4869,4 +4876,5 @@
    // Only remove state that was represented by this Fiber's props. Attributes
    // added imperatively while React owned the singleton must be preserved.
    detachDeletedInstance(instance);
@@ -31,7 +36,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -487,6 +487,42 @@
+@@ -487,6 +487,69 @@
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
@@ -48,12 +53,9 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    );
 +    await waitForAll([]);
 +
-+    // Simulate state written outside React while the singleton is owned.
 +    html.setAttribute('data-theme', 'dark');
 +    html.setAttribute('data-next', 'external');
 +
-+    // A key change deletes the old HostSingleton Fiber and places a new one
-+    // against the same persistent documentElement instance.
 +    root.render(
 +      <html key="fr" lang="fr" data-next="react">
 +        <head />
@@ -63,13 +65,43 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    await waitForAll([]);
 +
 +    expect(document.documentElement).toBe(html);
-+    // State owned by the released Fiber was removed.
 +    expect(html.hasAttribute('data-react-owned')).toBe(false);
-+    // State React never owned survives reacquisition.
 +    expect(html.getAttribute('data-theme')).toBe('dark');
-+    // New React props still win for their own keys.
 +    expect(html.getAttribute('data-next')).toBe('react');
 +    expect(html.getAttribute('lang')).toBe('fr');
++  });
++
++  it('uses cold cleanup when a singleton is reacquired in a later commit', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++
++    root.render(
++      <html>
++        <head />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    root.render(
++      <html>
++        <head />
++      </html>,
++    );
++    await waitForAll([]);
++
++    body.setAttribute('data-external', 'clear');
++
++    root.render(
++      <html>
++        <head />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.body).toBe(body);
++    expect(body.hasAttribute('data-external')).toBe(false);
 +  });
  
    // @gate __DEV__
