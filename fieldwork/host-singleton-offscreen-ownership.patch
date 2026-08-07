@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -490,6 +490,112 @@ describe('ReactDOM HostSingleton', () => {
+@@ -490,6 +490,139 @@ describe('ReactDOM HostSingleton', () => {
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
@@ -9,16 +9,17 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +  it('does not let a hidden singleton update mutate the visible owner', async () => {
 +    const root = ReactDOMClient.createRoot(document);
 +    const body = document.body;
++    const hiddenInitialClick = jest.fn();
++    const hiddenUpdateClick = jest.fn();
++    const visibleClick = jest.fn();
 +
 +    root.render(
-+      <>
-+        <React.Activity mode="visible">
-+          <html>
-+            <head />
-+            <body data-owner="hidden" />
-+          </html>
-+        </React.Activity>
-+      </>,
++      <React.Activity mode="visible">
++        <html>
++          <head />
++          <body data-owner="hidden" onClick={hiddenInitialClick} />
++        </html>
++      </React.Activity>,
 +    );
 +    await waitForAll([]);
 +    expect(body.getAttribute('data-owner')).toBe('hidden');
@@ -28,12 +29,12 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +        <React.Activity mode="hidden">
 +          <html>
 +            <head />
-+            <body data-owner="hidden" />
++            <body data-owner="hidden" onClick={hiddenInitialClick} />
 +          </html>
 +        </React.Activity>
 +        <html>
 +          <head />
-+          <body data-owner="visible" />
++          <body data-owner="visible" onClick={visibleClick} />
 +        </html>
 +      </>,
 +    );
@@ -45,33 +46,39 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +        <React.Activity mode="hidden">
 +          <html>
 +            <head />
-+            <body data-owner="hidden-update" />
++            <body data-owner="hidden-update" onClick={hiddenUpdateClick} />
 +          </html>
 +        </React.Activity>
 +        <html>
 +          <head />
-+          <body data-owner="visible" />
++          <body data-owner="visible" onClick={visibleClick} />
 +        </html>
 +      </>,
 +    );
 +    await waitForAll([]);
 +
 +    expect(body.getAttribute('data-owner')).toBe('visible');
++    body.dispatchEvent(
++      new document.defaultView.MouseEvent('click', {bubbles: true}),
++    );
++    expect(visibleClick).toHaveBeenCalledTimes(1);
++    expect(hiddenInitialClick).toHaveBeenCalledTimes(0);
++    expect(hiddenUpdateClick).toHaveBeenCalledTimes(0);
 +  });
 +
 +  it('does not release a hidden singleton again when it is deleted', async () => {
 +    const root = ReactDOMClient.createRoot(document);
 +    const body = document.body;
++    const hiddenClick = jest.fn();
++    const visibleClick = jest.fn();
 +
 +    root.render(
-+      <>
-+        <React.Activity mode="visible">
-+          <html>
-+            <head />
-+            <body data-owner="hidden" />
-+          </html>
-+        </React.Activity>
-+      </>,
++      <React.Activity mode="visible">
++        <html>
++          <head />
++          <body data-owner="hidden" onClick={hiddenClick} />
++        </html>
++      </React.Activity>,
 +    );
 +    await waitForAll([]);
 +
@@ -80,12 +87,12 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +        <React.Activity mode="hidden">
 +          <html>
 +            <head />
-+            <body data-owner="hidden" />
++            <body data-owner="hidden" onClick={hiddenClick} />
 +          </html>
 +        </React.Activity>
 +        <html>
 +          <head />
-+          <body data-owner="visible" />
++          <body data-owner="visible" onClick={visibleClick} />
 +        </html>
 +      </>,
 +    );
@@ -95,12 +102,17 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    root.render(
 +      <html>
 +        <head />
-+        <body data-owner="visible" />
++        <body data-owner="visible" onClick={visibleClick} />
 +      </html>,
 +    );
 +    await waitForAll([]);
 +
 +    expect(body.getAttribute('data-owner')).toBe('visible');
++    body.dispatchEvent(
++      new document.defaultView.MouseEvent('click', {bubbles: true}),
++    );
++    expect(visibleClick).toHaveBeenCalledTimes(1);
++    expect(hiddenClick).toHaveBeenCalledTimes(0);
 +  });
  
    // @gate __DEV__
