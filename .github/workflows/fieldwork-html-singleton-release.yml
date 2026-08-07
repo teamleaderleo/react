@@ -1,0 +1,33 @@
+name: Fieldwork html HostSingleton release preservation
+
+on:
+  push:
+    branches:
+      - research/html-singleton-release-preserve-document-nodes
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: fieldwork-html-singleton-release-preserve-document
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight candidate patch
+        run: git apply --check fieldwork/html-singleton-release-preserve-document.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply candidate and run focused gates
+        run: bash fieldwork/verify-html-singleton-release-preserve-document.sh
