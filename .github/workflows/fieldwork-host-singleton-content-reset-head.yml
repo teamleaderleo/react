@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   head-pressure:
@@ -49,3 +49,46 @@ jobs:
         run: yarn test --prod ReactDOMSingletonComponents-test
       - name: Run lint gate
         run: yarn linc
+
+  promote-body-only:
+    needs: body-only
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verification packet
+        uses: actions/checkout@v4
+        with:
+          path: verification
+      - name: Checkout clean source branch
+        uses: actions/checkout@v4
+        with:
+          ref: repair/host-singleton-content-reset
+          path: source
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: source/.nvmrc
+          cache: yarn
+          cache-dependency-path: source/yarn.lock
+      - name: Apply exact body-only narrowing
+        working-directory: source
+        run: git apply --check ../verification/fieldwork/host-singleton-content-reset-body-only.patch && git apply ../verification/fieldwork/host-singleton-content-reset-body-only.patch
+      - name: Install dependencies
+        working-directory: source
+        run: yarn install --frozen-lockfile
+      - name: Re-run focused dev suite
+        working-directory: source
+        run: yarn test --dev ReactDOMSingletonComponents-test
+      - name: Re-run focused prod suite
+        working-directory: source
+        run: yarn test --prod ReactDOMSingletonComponents-test
+      - name: Re-run lint gate
+        working-directory: source
+        run: yarn linc
+      - name: Commit clean source narrowing
+        working-directory: source
+        run: |
+          test "$(git diff --name-only)" = "packages/react-reconciler/src/ReactFiberBeginWork.js"
+          git config user.name "teamleaderleo-fieldwork"
+          git config user.email "13091533+teamleaderleo@users.noreply.github.com"
+          git add packages/react-reconciler/src/ReactFiberBeginWork.js
+          git commit -m "fix: narrow HostSingleton content reset to body"
+          git push origin HEAD:repair/host-singleton-content-reset
