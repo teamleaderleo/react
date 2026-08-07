@@ -1,0 +1,44 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -402,6 +402,40 @@
+     expect(body.innerHTML).toBe('<span>managed child</span>');
+   });
+ 
++  it('preserves external head resources when replacing direct HTML with children', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const head = document.head;
++
++    root.render(
++      <html>
++        <head
++          dangerouslySetInnerHTML={{__html: '<meta name="managed-stale" />'}}
++        />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    const externalLink = document.createElement('link');
++    externalLink.rel = 'stylesheet';
++    externalLink.href = 'external.css';
++    head.appendChild(externalLink);
++
++    root.render(
++      <html>
++        <head>
++          <title>managed title</title>
++        </head>
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(head.querySelector('meta[name="managed-stale"]')).toBe(null);
++    expect(head.querySelector('title').textContent).toBe('managed title');
++    expect(head.contains(externalLink)).toBe(true);
++  });
++
+   // @gate TODO
+   it('preserves imperative attributes when acquiring a singleton', async () => {
+     const body = document.body;
