@@ -1,20 +1,64 @@
-diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+diff --git a/packages/react-dom-bindings/src/client/ReactDOMComponentTree.js b/packages/react-dom-bindings/src/client/ReactDOMComponentTree.js
+--- a/packages/react-dom-bindings/src/client/ReactDOMComponentTree.js
++++ b/packages/react-dom-bindings/src/client/ReactDOMComponentTree.js
+@@ -43,11 +43,12 @@
+ const randomKey = Math.random().toString(36).slice(2);
+ const internalInstanceKey = '__reactFiber$' + randomKey;
+ const internalPropsKey = '__reactProps$' + randomKey;
+ const internalContainerInstanceKey = '__reactContainer$' + randomKey;
+ const internalEventHandlersKey = '__reactEvents$' + randomKey;
+ const internalEventHandlerListenersKey = '__reactListeners$' + randomKey;
+ const internalEventHandlesSetKey = '__reactHandles$' + randomKey;
+ const internalRootNodeResourcesKey = '__reactResources$' + randomKey;
+ const internalHoistableMarker = '__reactMarker$' + randomKey;
+ const internalScrollTimer = '__reactScroll$' + randomKey;
+ const internalLoadPendingKey = '__reactLoad$' + randomKey;
++const internalSingletonReleaseKey = '__reactSingletonRelease$' + randomKey;
+@@ -67,4 +68,17 @@
+ const internalPropsMap:
+   | WeakMap<InstanceUnion, Props>
+   | Map<InstanceUnion, Props> = new PossiblyWeakMap();
+ 
++export function markSingletonAsReleased(node: Instance, token: Object): void {
++  (node as any)[internalSingletonReleaseKey] = token;
++}
++
++export function consumeSingletonRelease(
++  node: Instance,
++  token: Object,
++): boolean {
++  const wasReleased = (node as any)[internalSingletonReleaseKey] === token;
++  delete (node as any)[internalSingletonReleaseKey];
++  return wasReleased;
++}
++
+ export function detachDeletedInstance(node: Instance): void {
+ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-@@ -300,2 +300,3 @@
+@@ -50,6 +50,8 @@
+   getInstanceFromNode as getInstanceFromNodeDOMTree,
+   isContainerMarkedAsRoot,
+   detachDeletedInstance,
++  markSingletonAsReleased,
++  consumeSingletonRelease,
+   getResourcesFromRoot,
+   isMarkedHoistable,
+   markNodeAsHoistable,
+@@ -300,2 +302,3 @@
  let eventsEnabled: ?boolean = null;
  let selectionInformation: null | SelectionInformation = null;
-+const releasedSingletons: Set<Instance> = new Set();
-@@ -423,3 +424,4 @@
++let singletonCommitToken: Object = {};
+@@ -423,3 +426,4 @@
  export function prepareForCommit(containerInfo: Container): Object | null {
-+  releasedSingletons.clear();
++  singletonCommitToken = {};
    eventsEnabled = ReactBrowserEventEmitterIsEnabled();
    selectionInformation = getSelectionInformation(containerInfo);
-@@ -4840,8 +4842,11 @@
+@@ -4840,8 +4844,12 @@
 -  const attributes = instance.attributes;
 -  while (attributes.length) {
 -    instance.removeAttributeNode(attributes[0]);
-+  const wasReleased = releasedSingletons.delete(instance);
++  const wasReleased = consumeSingletonRelease(instance, singletonCommitToken);
 +  if (!wasReleased) {
 +    const attributes = instance.attributes;
 +    while (attributes.length) {
@@ -25,11 +69,11 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
    setInitialProperties(instance, type, props);
    precacheFiberNode(internalInstanceHandle, instance);
    updateFiberProps(instance, props);
-@@ -4869,4 +4874,5 @@
+@@ -4869,4 +4877,5 @@
    // Only remove state that was represented by this Fiber's props. Attributes
    // added imperatively while React owned the singleton must be preserved.
    detachDeletedInstance(instance);
-+  releasedSingletons.add(instance);
++  markSingletonAsReleased(instance, singletonCommitToken);
  }
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
