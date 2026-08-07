@@ -79,9 +79,12 @@ describe('ReactFlightDOMReply', () => {
       },
     };
 
-    await ReactServerDOMClient.encodeReply({hello: 'world'}, {
-      signal: (signal: any),
-    });
+    await ReactServerDOMClient.encodeReply(
+      {hello: 'world'},
+      {
+        signal: (signal: any),
+      },
+    );
 
     expect(addCount).toBe(0);
     expect(listeners.size).toBe(0);
