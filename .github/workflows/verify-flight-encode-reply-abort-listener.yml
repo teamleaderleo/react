@@ -3,11 +3,14 @@ name: Verify Flight encodeReply abort listener
 on:
   push:
     branches: [verify/flight-encode-reply-abort-listener]
+  pull_request:
+    branches: [main]
 
 permissions: {}
 
 jobs:
   focused:
+    if: github.event_name == 'push' || github.head_ref == 'verify/flight-encode-reply-abort-listener'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,6 +75,7 @@ jobs:
         run: yarn test --prod ReactFlightDOMReply-test
 
   flow:
+    if: github.event_name == 'push' || github.head_ref == 'verify/flight-encode-reply-abort-listener'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
