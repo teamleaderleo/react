@@ -7,14 +7,14 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: fieldwork-host-singleton-content-reset-head
+  group: fieldwork-host-singleton-content-reset-scope
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  head-and-body:
+  current-head-regression:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +28,48 @@ jobs:
         run: yarn install --frozen-lockfile
       - name: Apply head regression
         run: git apply fieldwork/host-singleton-content-reset-head.patch
+      - name: Run focused dev suite
+        run: yarn test --dev ReactDOMSingletonComponents-test
+      - name: Run focused prod suite
+        run: yarn test --prod ReactDOMSingletonComponents-test
+
+  current-text-sibling-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight text sibling regression
+        run: git apply --check fieldwork/host-singleton-content-reset-text-sibling.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply text sibling regression
+        run: git apply fieldwork/host-singleton-content-reset-text-sibling.patch
+      - name: Run focused dev suite
+        run: yarn test --dev ReactDOMSingletonComponents-test
+
+  direct-html-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight repair and regressions
+        run: |
+          git apply --check fieldwork/host-singleton-content-reset-direct-html-only.patch
+          git apply --check fieldwork/host-singleton-content-reset-head.patch
+          git apply --check fieldwork/host-singleton-content-reset-text-sibling.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply narrowed repair and regressions
+        run: |
+          git apply fieldwork/host-singleton-content-reset-direct-html-only.patch
+          git apply fieldwork/host-singleton-content-reset-head.patch
+          git apply fieldwork/host-singleton-content-reset-text-sibling.patch
       - name: Run focused dev suite
         run: yarn test --dev ReactDOMSingletonComponents-test
       - name: Run focused prod suite
