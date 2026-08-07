@@ -2088,6 +2088,7 @@ function updateHostSingleton(
   const nextChildren = nextProps.children;
 
   if (
+    workInProgress.type !== 'html' &&
     prevProps !== null &&
     shouldSetTextContent(workInProgress.type, prevProps) &&
     !shouldSetTextContent(workInProgress.type, nextProps)

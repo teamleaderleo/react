@@ -578,8 +578,8 @@ function commitPlacement(finishedWork: Fiber): void {
   }
 
   if (contentResetParent !== null) {
-    // HostSingletons outside a singleton placement scope (html/body) are
-    // skipped while finding the placement parent. Still clear their direct
+    // A body singleton is outside a singleton placement scope, so it is
+    // skipped while finding the placement parent. Still clear its direct
     // content before inserting the replacement child, just like HostComponent.
     resetTextContent(contentResetParent.stateNode);
     contentResetParent.flags &= ~ContentReset;
