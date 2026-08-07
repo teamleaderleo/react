@@ -1,0 +1,30 @@
+name: Fieldwork HostSingleton head content reset pressure test
+
+on:
+  pull_request:
+    branches:
+      - repair/host-singleton-content-reset
+  workflow_dispatch:
+
+concurrency:
+  group: fieldwork-host-singleton-content-reset-head
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight test patch
+        run: git apply --check fieldwork/host-singleton-content-reset-head.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply pressure test and run focused gates
+        run: bash fieldwork/verify-host-singleton-content-reset-head.sh
