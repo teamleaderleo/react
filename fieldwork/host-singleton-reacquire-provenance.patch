@@ -1,11 +1,13 @@
 diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-@@ -1,2 +1,3 @@
+@@ -300,2 +300,5 @@
  let eventsEnabled: ?boolean = null;
  let selectionInformation: null | SelectionInformation = null;
-+const releasedSingletons: WeakSet<Instance> = new WeakSet();
-@@ -1,8 +1,11 @@
++const PossiblyWeakSet = typeof WeakSet === 'function' ? WeakSet : Set;
++const releasedSingletons: WeakSet<Instance> | Set<Instance> =
++  new PossiblyWeakSet();
+@@ -4840,8 +4843,11 @@
 -  const attributes = instance.attributes;
 -  while (attributes.length) {
 -    instance.removeAttributeNode(attributes[0]);
@@ -20,7 +22,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
    setInitialProperties(instance, type, props);
    precacheFiberNode(internalInstanceHandle, instance);
    updateFiberProps(instance, props);
-@@ -1,4 +1,5 @@
+@@ -4869,4 +4875,5 @@
    // Only remove state that was represented by this Fiber's props. Attributes
    // added imperatively while React owned the singleton must be preserved.
    detachDeletedInstance(instance);
@@ -29,7 +31,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -1,6 +1,43 @@
+@@ -487,6 +487,42 @@
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
