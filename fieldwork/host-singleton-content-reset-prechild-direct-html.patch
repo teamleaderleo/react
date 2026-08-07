@@ -57,24 +57,24 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/pack
 diff --git a/packages/react-reconciler/src/ReactFiberCommitWork.js b/packages/react-reconciler/src/ReactFiberCommitWork.js
 --- a/packages/react-reconciler/src/ReactFiberCommitWork.js
 +++ b/packages/react-reconciler/src/ReactFiberCommitWork.js
-@@ -2216,14 +2216,18 @@ function commitMutationEffectsOnFiber(
+@@ -2216,14 +2216,20 @@ function commitMutationEffectsOnFiber(
      case HostSingleton: {
        // $FlowFixMe[constant-condition]
        if (supportsSingletons) {
 -        recursivelyTraverseMutationEffects(root, finishedWork, lanes);
 -        commitReconciliationEffects(finishedWork, lanes);
--        if (finishedWork.flags & ContentReset) {
+         if (finishedWork.flags & ContentReset) {
 -          // If no child placement consumed the reset, clear stale direct
 -          // content now. This covers transitions to empty content.
-+        if (
-+          !offscreenSubtreeWasHidden &&
-+          finishedWork.flags & ContentReset
-+        ) {
-+          // Direct HTML has no Fiber-managed children. Clear it before visiting
-+          // replacement child effects so body placements cannot observe stale
-+          // content and do not need special handling in commitPlacement. A
-+          // previously hidden subtree has already released its singleton.
-           commitHostResetTextContent(finishedWork);
+-          commitHostResetTextContent(finishedWork);
++          if (!offscreenSubtreeWasHidden) {
++            // Direct HTML has no Fiber-managed children. Clear it before
++            // visiting replacement child effects so body placements cannot
++            // observe stale content and do not need special handling in
++            // commitPlacement. A previously hidden subtree has already
++            // released its singleton.
++            commitHostResetTextContent(finishedWork);
++          }
            finishedWork.flags &= ~ContentReset;
          }
 +        recursivelyTraverseMutationEffects(root, finishedWork, lanes);
