@@ -292,12 +292,19 @@ export function commitFragmentInstanceInsertionEffects(fiber: Fiber): void {
   }
 }
 
-export function commitFragmentInstanceDeletionEffects(fiber: Fiber): void {
+export function commitFragmentInstanceDeletionEffects(
+  fiber: Fiber,
+  unobserveObservers: boolean = false,
+): void {
   let parent = fiber.return;
   while (parent !== null) {
     if (isFragmentInstanceParent(parent)) {
       const fragmentInstance: FragmentInstanceType = parent.stateNode;
-      deleteChildFromFragmentInstance(fiber.stateNode, fragmentInstance);
+      deleteChildFromFragmentInstance(
+        fiber.stateNode,
+        fragmentInstance,
+        unobserveObservers,
+      );
     }
 
     if (isFragmentInstanceHostParent(parent)) {

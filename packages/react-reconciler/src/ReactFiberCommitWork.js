@@ -1528,7 +1528,10 @@ function commitDeletionEffectsOnFiber(
           safelyDetachRef(deletedFiber, nearestMountedAncestor);
         }
         if (enableFragmentRefs) {
-          commitFragmentInstanceDeletionEffects(deletedFiber);
+          // HostSingleton DOM nodes survive Fiber deletion, so unlike ordinary
+          // host children there is no later DOM removal for an observer to
+          // report. End the old Fragment's observer ownership explicitly.
+          commitFragmentInstanceDeletionEffects(deletedFiber, true);
         }
 
         const prevHostParent = hostParent;

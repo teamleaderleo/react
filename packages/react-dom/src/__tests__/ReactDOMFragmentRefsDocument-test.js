@@ -225,6 +225,91 @@ describe('FragmentRefs', () => {
     });
   });
 
+  describe('observers', () => {
+    // @gate enableFragmentRefs
+    it('stops observing a HostSingleton when it leaves the Fragment', async () => {
+      const fragmentRef = React.createRef();
+      const root = ReactDOMClient.createRoot(document);
+
+      function Test({showShell}) {
+        return (
+          <Fragment ref={fragmentRef}>
+            {showShell && (
+              <html>
+                <body />
+              </html>
+            )}
+          </Fragment>
+        );
+      }
+
+      await act(() => {
+        root.render(<Test showShell={true} />);
+      });
+
+      const observer = {
+        observe: jest.fn(),
+        unobserve: jest.fn(),
+      };
+      fragmentRef.current.observeUsing(observer);
+      expect(observer.observe).toHaveBeenCalledWith(document.documentElement);
+
+      await act(() => {
+        root.render(<Test showShell={false} />);
+      });
+
+      // A HostSingleton remains live in the Document after its Fiber leaves
+      // the Fragment, so the old Fragment must explicitly stop observing it.
+      expect(document.documentElement).not.toBe(null);
+      expect(observer.unobserve).toHaveBeenCalledWith(
+        document.documentElement,
+      );
+
+      await act(() => {
+        root.render(<Test showShell={true} />);
+      });
+      expect(observer.observe).toHaveBeenCalledTimes(2);
+      expect(observer.observe).toHaveBeenLastCalledWith(
+        document.documentElement,
+      );
+    });
+
+    // @gate enableFragmentRefs
+    it('keeps ordinary removed host children observed for removal reporting', async () => {
+      const fragmentRef = React.createRef();
+      const container = document.createElement('div');
+      const root = ReactDOMClient.createRoot(container);
+
+      function Test({showChild}) {
+        return (
+          <Fragment ref={fragmentRef}>
+            {showChild && <div id="ordinary-child" />}
+          </Fragment>
+        );
+      }
+
+      await act(() => {
+        root.render(<Test showChild={true} />);
+      });
+      const child = container.firstChild;
+      const observer = {
+        observe: jest.fn(),
+        unobserve: jest.fn(),
+      };
+      fragmentRef.current.observeUsing(observer);
+      expect(observer.observe).toHaveBeenCalledWith(child);
+
+      await act(() => {
+        root.render(<Test showChild={false} />);
+      });
+
+      // Ordinary children retain the established observer behavior: React
+      // does not unobserve them eagerly, so a real IntersectionObserver can
+      // report the DOM removal with an empty rect.
+      expect(observer.unobserve).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getClientRects()', () => {
     // @gate enableFragmentRefs
     it('measures the host children inside singletons', async () => {

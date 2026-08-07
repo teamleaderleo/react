@@ -3741,6 +3741,7 @@ export function commitNewChildToFragmentInstance(
 export function deleteChildFromFragmentInstance(
   childInstance: InstanceWithFragmentHandles | Text,
   fragmentInstance: FragmentInstanceType,
+  unobserveObservers: boolean = false,
 ): void {
   if (childInstance.nodeType === TEXT_NODE) {
     return;
@@ -3752,6 +3753,11 @@ export function deleteChildFromFragmentInstance(
       const {type, listener, optionsOrUseCapture} = eventListeners[i];
       instance.removeEventListener(type, listener, optionsOrUseCapture);
     }
+  }
+  if (unobserveObservers && fragmentInstance._observers !== null) {
+    fragmentInstance._observers.forEach(observer => {
+      observer.unobserve(instance);
+    });
   }
   if (enableFragmentRefsInstanceHandles) {
     if (instance.reactFragments != null) {
