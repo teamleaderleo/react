@@ -38,10 +38,23 @@ jobs:
             raise SystemExit(f'BeginWork target count: {text.count(old)}')
           begin.write_text(text.replace(old, new))
 
+          host_effects = Path('packages/react-reconciler/src/ReactFiberCommitHostEffects.js')
+          text = host_effects.read_text()
+          old = """  let hostParentFiber;\n  let parentFragmentInstances = null;\n  let collectFragmentInstances = enableFragmentRefs;\n  let parentFiber = finishedWork.return;\n  while (parentFiber !== null) {\n"""
+          new = """  let hostParentFiber;\n  let contentResetParent = null;\n  let parentFragmentInstances = null;\n  let collectFragmentInstances = enableFragmentRefs;\n  let parentFiber = finishedWork.return;\n  while (parentFiber !== null) {\n    if (\n      contentResetParent === null &&\n      supportsSingletons &&\n      parentFiber.tag === HostSingleton &&\n      parentFiber.flags & ContentReset\n    ) {\n      contentResetParent = parentFiber;\n    }\n"""
+          if text.count(old) != 1:
+            raise SystemExit(f'CommitHostEffects parent-search target count: {text.count(old)}')
+          text = text.replace(old, new)
+          old = """  if (hostParentFiber == null) {\n    throw new Error(\n      'Expected to find a host parent. This error is likely caused by a bug ' +\n        'in React. Please file an issue.',\n    );\n  }\n\n  switch (hostParentFiber.tag) {\n"""
+          new = """  if (hostParentFiber == null) {\n    throw new Error(\n      'Expected to find a host parent. This error is likely caused by a bug ' +\n        'in React. Please file an issue.',\n    );\n  }\n\n  if (contentResetParent !== null) {\n    // HostSingletons outside a singleton placement scope (html/body) are\n    // skipped while finding the placement parent. Still clear their direct\n    // content before inserting the replacement child, just like HostComponent.\n    resetTextContent(contentResetParent.stateNode);\n    contentResetParent.flags &= ~ContentReset;\n    trackHostMutation();\n  }\n\n  switch (hostParentFiber.tag) {\n"""
+          if text.count(old) != 1:
+            raise SystemExit(f'CommitHostEffects insertion target count: {text.count(old)}')
+          host_effects.write_text(text.replace(old, new))
+
           commit = Path('packages/react-reconciler/src/ReactFiberCommitWork.js')
           text = commit.read_text()
-          old = """      if (supportsSingletons) {\n        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n"""
-          new = """      if (supportsSingletons) {\n        if (finishedWork.flags & ContentReset) {\n          // A singleton cannot be replaced like an ordinary host node, so clear\n          // stale direct text/HTML before committing replacement children.\n          commitHostResetTextContent(finishedWork);\n          finishedWork.flags &= ~ContentReset;\n        }\n        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n"""
+          old = """      if (supportsSingletons) {\n        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n        if (flags & Ref) {\n"""
+          new = """      if (supportsSingletons) {\n        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n        if (finishedWork.flags & ContentReset) {\n          // If no child placement consumed the reset, clear stale direct\n          // content now. This covers transitions to empty content.\n          commitHostResetTextContent(finishedWork);\n          finishedWork.flags &= ~ContentReset;\n        }\n        if (flags & Ref) {\n"""
           if text.count(old) != 1:
             raise SystemExit(f'CommitWork HostSingleton target count: {text.count(old)}')
           commit.write_text(text.replace(old, new))
@@ -74,6 +87,7 @@ jobs:
           git config user.name "fieldwork-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add packages/react-reconciler/src/ReactFiberBeginWork.js \
+                  packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
                   packages/react-reconciler/src/ReactFiberCommitWork.js \
                   packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
                   .github/workflows/fieldwork-host-singleton-repair.yml
