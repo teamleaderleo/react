@@ -12,7 +12,6 @@
 
 global.AsyncLocalStorage = require('async_hooks').AsyncLocalStorage;
 
-let ReactServer;
 let ReactServerDOMServer;
 let ReactServerDOMClient;
 let serverAct;
@@ -26,7 +25,6 @@ describe('ReactFlight weak thenable settlement row types', () => {
     jest.mock('react-server-dom-webpack/server', () =>
       require('react-server-dom-webpack/server.edge'),
     );
-    ReactServer = require('react');
     ReactServerDOMServer = require('react-server-dom-webpack/server');
 
     jest.resetModules();
@@ -66,20 +64,19 @@ describe('ReactFlight weak thenable settlement row types', () => {
   }
 
   // @gate enableFlightWeakThenables
-  it('fulfills a weak thenable that settles to a large string', async () => {
+  it('fulfills an already-referenced weak thenable with a large string', async () => {
     const {thenable, settle} = createWeakThenable();
     const expected = 'x'.repeat(5000);
-
-    function Page() {
-      settle(expected);
-      return 'done';
-    }
+    let resolveHold;
+    const hold = new Promise(resolve => {
+      resolveHold = resolve;
+    });
 
     let response;
     await serverAct(() => {
       const stream = ReactServerDOMServer.renderToReadableStream({
         weak: thenable,
-        root: <Page />,
+        hold,
       });
       response = ReactServerDOMClient.createFromReadableStream(stream, {
         serverConsumerManifest: {
@@ -89,8 +86,27 @@ describe('ReactFlight weak thenable settlement row types', () => {
       });
     });
 
+    // The root model has reached the client and created the `$w` weak chunk,
+    // while the ordinary promise keeps the server response open.
     const result = await response;
-    expect(result.root).toBe('done');
+    expect(result.weak.status).toBe('pending_weak');
+
+    let weakValue;
+    result.weak.then(value => {
+      weakValue = value;
+    });
+
+    await serverAct(() => {
+      settle(expected);
+    });
+    await serverAct(async () => {});
+
+    expect(weakValue).toBe(expected);
     expect(await result.weak).toBe(expected);
+
+    await serverAct(() => {
+      resolveHold('done');
+    });
+    expect(await result.hold).toBe('done');
   });
 });
