@@ -23,6 +23,7 @@ const {
 let clientExports;
 let webpackMap;
 let act;
+let assertConsoleErrorDev;
 let serverAct;
 let React;
 let ReactDOMClient;
@@ -53,7 +54,7 @@ describe('ReactFlight static child key validation', () => {
     jest.resetModules();
     patchMessageChannel();
 
-    act = require('internal-test-utils').act;
+    ({act, assertConsoleErrorDev} = require('internal-test-utils'));
     React = require('react');
     ReactDOMClient = require('react-dom/client');
     ReactServerDOMClient = require('react-server-dom-webpack/client');
@@ -107,5 +108,36 @@ describe('ReactFlight static child key validation', () => {
     expect(await renderWithPadding(4000)).toBe(
       '<div><button type="button">Send me details</button><div>Prefer a chat?</div></div>',
     );
+  });
+
+  it('still warns for a genuine dynamic list without keys', async () => {
+    const DynamicList = clientExports(function DynamicList({items}) {
+      return <div>{items.map(item => <span>{item}</span>)}</div>;
+    });
+
+    const stream = await serverAct(() =>
+      ReactServerDOMServer.renderToReadableStream(
+        <DynamicList items={['A', 'B']} />,
+        webpackMap,
+      ),
+    );
+    const response = ReactServerDOMClient.createFromReadableStream(stream);
+
+    function ClientRoot() {
+      return use(response);
+    }
+
+    const container = document.createElement('div');
+    const root = ReactDOMClient.createRoot(container);
+    await act(() => {
+      root.render(<ClientRoot />);
+    });
+
+    assertConsoleErrorDev([
+      'Each child in a list should have a unique "key" prop.\n\n' +
+        'Check the render method of `DynamicList`. See https://react.dev/link/warning-keys for more information.\n' +
+        '    in span (at **)\n' +
+        '    in DynamicList (at **)',
+    ]);
   });
 });
