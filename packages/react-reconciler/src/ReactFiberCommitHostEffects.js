@@ -523,10 +523,19 @@ function insertOrAppendPlacementNode(
 function commitPlacement(finishedWork: Fiber): void {
   // Recursively insert all host nodes into the parent.
   let hostParentFiber;
+  let contentResetParent = null;
   let parentFragmentInstances = null;
   let collectFragmentInstances = enableFragmentRefs;
   let parentFiber = finishedWork.return;
   while (parentFiber !== null) {
+    if (
+      contentResetParent === null &&
+      supportsSingletons &&
+      parentFiber.tag === HostSingleton &&
+      parentFiber.flags & ContentReset
+    ) {
+      contentResetParent = parentFiber;
+    }
     if (collectFragmentInstances && isFragmentInstanceParent(parentFiber)) {
       const fragmentInstance: FragmentInstanceType = parentFiber.stateNode;
       if (parentFragmentInstances === null) {
@@ -566,6 +575,15 @@ function commitPlacement(finishedWork: Fiber): void {
       'Expected to find a host parent. This error is likely caused by a bug ' +
         'in React. Please file an issue.',
     );
+  }
+
+  if (contentResetParent !== null) {
+    // HostSingletons outside a singleton placement scope (html/body) are
+    // skipped while finding the placement parent. Still clear their direct
+    // content before inserting the replacement child, just like HostComponent.
+    resetTextContent(contentResetParent.stateNode);
+    contentResetParent.flags &= ~ContentReset;
+    trackHostMutation();
   }
 
   switch (hostParentFiber.tag) {
