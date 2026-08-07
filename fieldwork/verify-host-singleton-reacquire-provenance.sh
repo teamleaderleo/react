@@ -9,5 +9,6 @@ patch_file="fieldwork/host-singleton-reacquire-provenance.patch"
 git apply --check "$patch_file"
 git apply "$patch_file"
 
-yarn test ReactDOMSingletonComponents-test
+yarn test --dev ReactDOMSingletonComponents-test
+yarn test --prod ReactDOMSingletonComponents-test
 yarn linc
