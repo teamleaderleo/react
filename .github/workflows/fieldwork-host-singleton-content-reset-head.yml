@@ -1,4 +1,4 @@
-name: Fieldwork HostSingleton head content reset pressure test
+name: Fieldwork HostSingleton content reset pressure test
 
 on:
   pull_request:
@@ -14,11 +14,11 @@ permissions:
   contents: read
 
 jobs:
-  focused:
+  head-pressure:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight test patch
+      - name: Preflight head pressure patch
         run: git apply --check fieldwork/host-singleton-content-reset-head.patch
       - uses: actions/setup-node@v4
         with:
@@ -26,5 +26,26 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply pressure test and run focused gates
+      - name: Apply head pressure test and run focused gates
         run: bash fieldwork/verify-host-singleton-content-reset-head.sh
+
+  body-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight body-only source patch
+        run: git apply --check fieldwork/host-singleton-content-reset-body-only.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply body-only source patch
+        run: git apply fieldwork/host-singleton-content-reset-body-only.patch
+      - name: Run focused dev suite
+        run: yarn test --dev ReactDOMSingletonComponents-test
+      - name: Run focused prod suite
+        run: yarn test --prod ReactDOMSingletonComponents-test
+      - name: Run lint gate
+        run: yarn linc
