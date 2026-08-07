@@ -62,6 +62,61 @@ describe('ReactFlightDOMReply', () => {
     });
   }
 
+  it('does not subscribe an AbortSignal after a synchronous reply has settled', async () => {
+    const listeners = new Set();
+    let addCount = 0;
+    const signal = {
+      aborted: false,
+      reason: undefined,
+      addEventListener(type, listener) {
+        expect(type).toBe('abort');
+        addCount++;
+        listeners.add(listener);
+      },
+      removeEventListener(type, listener) {
+        expect(type).toBe('abort');
+        listeners.delete(listener);
+      },
+    };
+
+    await ReactServerDOMClient.encodeReply({hello: 'world'}, {
+      signal: (signal: any),
+    });
+
+    expect(addCount).toBe(0);
+    expect(listeners.size).toBe(0);
+  });
+
+  it('removes the AbortSignal listener after an asynchronous reply settles', async () => {
+    const listeners = new Set();
+    const signal = {
+      aborted: false,
+      reason: undefined,
+      addEventListener(type, listener) {
+        expect(type).toBe('abort');
+        listeners.add(listener);
+      },
+      removeEventListener(type, listener) {
+        expect(type).toBe('abort');
+        listeners.delete(listener);
+      },
+    };
+    let resolve;
+    const pending = new Promise(r => {
+      resolve = r;
+    });
+
+    const bodyPromise = ReactServerDOMClient.encodeReply(
+      {pending},
+      {signal: (signal: any)},
+    );
+    expect(listeners.size).toBe(1);
+
+    resolve('done');
+    await bodyPromise;
+    expect(listeners.size).toBe(0);
+  });
+
   it('can pass undefined as a reply', async () => {
     const body = await ReactServerDOMClient.encodeReply(undefined);
     const missing = await ReactServerDOMServer.decodeReply(

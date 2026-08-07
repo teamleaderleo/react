@@ -265,23 +265,43 @@ function encodeReply(
   string | URLSearchParams | FormData,
 > /* We don't use URLSearchParams yet but maybe */ {
   return new Promise((resolve, reject) => {
+    const signal = options && options.signal;
+    let listener: null | (() => void) = null;
+    let settled = false;
+
+    const cleanup = () => {
+      if (listener !== null && signal !== undefined) {
+        signal.removeEventListener('abort', listener);
+        listener = null;
+      }
+    };
+    const resolveWithCleanup = (body: string | FormData) => {
+      settled = true;
+      cleanup();
+      resolve(body);
+    };
+    const rejectWithCleanup = (error: mixed) => {
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
     const abort = processReply(
       value,
       '',
       options && options.temporaryReferences
         ? options.temporaryReferences
         : undefined,
-      resolve,
-      reject,
+      resolveWithCleanup,
+      rejectWithCleanup,
     );
-    if (options && options.signal) {
-      const signal = options.signal;
+    if (signal !== undefined) {
       if (signal.aborted) {
         abort((signal as any).reason);
-      } else {
-        const listener = () => {
+      } else if (!settled) {
+        listener = () => {
+          cleanup();
           abort((signal as any).reason);
-          signal.removeEventListener('abort', listener);
         };
         signal.addEventListener('abort', listener);
       }
