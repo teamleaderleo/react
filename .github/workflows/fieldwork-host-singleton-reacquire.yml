@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: fieldwork-host-singleton-reacquire-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
