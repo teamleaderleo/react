@@ -1,0 +1,70 @@
+name: Fieldwork Flight static-child validation repair
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'repair/flight-static-child-validation-deferral'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair/flight-static-child-validation-deferral
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+
+      - name: Materialize validation transfer experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main research/flight-static-child-outline-key-warning
+          git branch -f main origin/main
+          git checkout origin/research/flight-static-child-outline-key-warning -- packages/react-server-dom-webpack/src/__tests__/ReactFlightStaticChildKeyValidation-test.js
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-client/src/ReactFlightClient.js')
+          text = path.read_text()
+          old = '''  if (__DEV__) {\n    // Forward the live array\n    lazyType._debugInfo = chunk._debugInfo;\n    // Initialize a store for key validation by the JSX runtime.\n    lazyType._store = {validated: validated};\n  }\n  return lazyType;'''
+          new = '''  if (__DEV__) {\n    // Forward the live array\n    lazyType._debugInfo = chunk._debugInfo;\n    // Initialize a store for key validation by the JSX runtime.\n    lazyType._store = {validated: validated};\n    lazyType._init = payload => {\n      const value = readChunk(payload);\n      const store = lazyType._store;\n      if (\n        store &&\n        store.validated &&\n        typeof value === 'object' &&\n        value !== null\n      ) {\n        const element: any = value;\n        if (\n          element.$$typeof === REACT_ELEMENT_TYPE &&\n          element._store &&\n          !element._store.validated\n        ) {\n          element._store.validated = store.validated;\n        }\n      }\n      return value;\n    };\n  }\n  return lazyType;'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'expected one createLazyChunkWrapper DEV block, found {count}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Focused Flight regression
+        run: yarn test --dev ReactFlightStaticChildKeyValidation-test --runInBand
+
+      - name: Existing blocked-child regression
+        run: yarn test --dev ReactFlightDOMBrowser-test -t 'static child is blocked on debug info' --runInBand
+
+      - name: Lint changed source
+        run: yarn linc
+
+      - name: Publish workflow-free experiment head
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .fieldwork-flight-static-child-validation-repair
+          rm -f .github/workflows/fieldwork-flight-static-child-validation-repair.yml
+          git diff --check
+          git config user.name 'fieldwork-bot'
+          git config user.email 'fieldwork-bot@users.noreply.github.com'
+          git add packages/react-client/src/ReactFlightClient.js \
+                  packages/react-server-dom-webpack/src/__tests__/ReactFlightStaticChildKeyValidation-test.js \
+                  .fieldwork-flight-static-child-validation-repair \
+                  .github/workflows/fieldwork-flight-static-child-validation-repair.yml
+          git commit -m 'Preserve Flight static-child validation across deferral'
+          git push origin HEAD:repair/flight-static-child-validation-deferral
