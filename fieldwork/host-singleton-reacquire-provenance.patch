@@ -34,7 +34,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -490,6 +490,98 @@
+@@ -490,6 +490,100 @@
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
@@ -52,6 +52,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    await waitForAll([]);
 +
 +    html.setAttribute('data-theme', 'dark');
++    html.setAttribute('class', 'dark');
 +    html.setAttribute('data-next', 'external');
 +
 +    root.render(
@@ -65,6 +66,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    expect(document.documentElement).toBe(html);
 +    expect(html.hasAttribute('data-react-owned')).toBe(false);
 +    expect(html.getAttribute('data-theme')).toBe('dark');
++    expect(html.getAttribute('class')).toBe('dark');
 +    expect(html.getAttribute('data-next')).toBe('react');
 +    expect(html.getAttribute('lang')).toBe('fr');
 +  });
