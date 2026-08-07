@@ -33,7 +33,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactDOMComponentTree.js b/p
 +}
 +
  export function detachDeletedInstance(node: Instance): void {
- diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 @@ -50,6 +50,8 @@
