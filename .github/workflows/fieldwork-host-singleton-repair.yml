@@ -1,0 +1,90 @@
+name: Fieldwork HostSingleton content reset repair
+
+on:
+  push:
+    branches:
+      - repair/host-singleton-content-reset
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    if: github.event_name == 'push' || github.head_ref == 'repair/host-singleton-content-reset'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair/host-singleton-content-reset
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Apply narrow HostSingleton repair
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          begin = Path('packages/react-reconciler/src/ReactFiberBeginWork.js')
+          text = begin.read_text()
+          old = """function updateHostSingleton(\n  current: Fiber | null,\n  workInProgress: Fiber,\n  renderLanes: Lanes,\n) {\n  pushHostContext(workInProgress);\n\n  if (current === null) {\n    claimHydratableSingleton(workInProgress);\n  }\n\n  const nextChildren = workInProgress.pendingProps.children;\n  reconcileChildren(current, workInProgress, nextChildren, renderLanes);\n"""
+          new = """function updateHostSingleton(\n  current: Fiber | null,\n  workInProgress: Fiber,\n  renderLanes: Lanes,\n) {\n  pushHostContext(workInProgress);\n\n  if (current === null) {\n    claimHydratableSingleton(workInProgress);\n  }\n\n  const nextProps = workInProgress.pendingProps;\n  const prevProps = current !== null ? current.memoizedProps : null;\n  const nextChildren = nextProps.children;\n\n  if (\n    prevProps !== null &&\n    shouldSetTextContent(workInProgress.type, prevProps) &&\n    !shouldSetTextContent(workInProgress.type, nextProps)\n  ) {\n    workInProgress.flags |= ContentReset;\n  }\n\n  reconcileChildren(current, workInProgress, nextChildren, renderLanes);\n"""
+          if text.count(old) != 1:
+            raise SystemExit(f'BeginWork target count: {text.count(old)}')
+          begin.write_text(text.replace(old, new))
+
+          effects = Path('packages/react-reconciler/src/ReactFiberCommitHostEffects.js')
+          text = effects.read_text()
+          old = """      if (supportsSingletons) {\n        const parent: Instance = hostParentFiber.stateNode;\n        const before = getHostSibling(finishedWork);\n"""
+          new = """      if (supportsSingletons) {\n        const parent: Instance = hostParentFiber.stateNode;\n        if (hostParentFiber.flags & ContentReset) {\n          // Reset the text content of the singleton before doing any insertions.\n          resetTextContent(parent);\n          // Clear ContentReset from the effect tag.\n          hostParentFiber.flags &= ~ContentReset;\n        }\n        const before = getHostSibling(finishedWork);\n"""
+          if text.count(old) != 1:
+            raise SystemExit(f'CommitHostEffects target count: {text.count(old)}')
+          effects.write_text(text.replace(old, new))
+
+          commit = Path('packages/react-reconciler/src/ReactFiberCommitWork.js')
+          text = commit.read_text()
+          old = """        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n        if (flags & Ref) {\n"""
+          new = """        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n        if (finishedWork.flags & ContentReset) {\n          commitHostResetTextContent(finishedWork);\n        }\n        if (flags & Ref) {\n"""
+          if text.count(old) != 1:
+            raise SystemExit(f'CommitWork HostSingleton target count: {text.count(old)}')
+          commit.write_text(text.replace(old, new))
+
+          tests = Path('packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js')
+          text = tests.read_text()
+          names = [
+            "clears dangerouslySetInnerHTML when it becomes undefined",
+            "clears dangerouslySetInnerHTML when __html becomes undefined",
+            "replaces dangerouslySetInnerHTML with singleton children",
+          ]
+          for name in names:
+            old = f"  // @gate TODO\n  it('{name}',"
+            new = f"  it('{name}',"
+            if text.count(old) != 1:
+              raise SystemExit(f'Test gate target {name!r} count: {text.count(old)}')
+            text = text.replace(old, new)
+          tests.write_text(text)
+
+          Path('.github/workflows/fieldwork-host-singleton-repair.yml').unlink()
+          PY
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Run focused singleton tests
+        run: yarn test ReactDOMSingletonComponents-test
+      - name: Lint changed files
+        run: yarn linc
+      - name: Commit verified repair
+        run: |
+          git config user.name "fieldwork-bot"
+          git config user.email "noreply@github.com"
+          git add packages/react-reconciler/src/ReactFiberBeginWork.js \
+                  packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
+                  packages/react-reconciler/src/ReactFiberCommitWork.js \
+                  packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
+                  .github/workflows/fieldwork-host-singleton-repair.yml
+          git commit -m "Fix HostSingleton content reset transitions"
+          git push origin HEAD:repair/host-singleton-content-reset
