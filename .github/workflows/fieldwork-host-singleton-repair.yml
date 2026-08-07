@@ -81,7 +81,9 @@ jobs:
       - name: Run focused singleton tests
         run: yarn test ReactDOMSingletonComponents-test
       - name: Lint changed files
-        run: yarn linc
+        run: |
+          git branch main origin/main
+          yarn linc
       - name: Commit verified repair
         run: |
           git config user.name "fieldwork-bot"
