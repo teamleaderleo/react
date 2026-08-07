@@ -38,18 +38,10 @@ jobs:
             raise SystemExit(f'BeginWork target count: {text.count(old)}')
           begin.write_text(text.replace(old, new))
 
-          effects = Path('packages/react-reconciler/src/ReactFiberCommitHostEffects.js')
-          text = effects.read_text()
-          old = """      if (supportsSingletons) {\n        const parent: Instance = hostParentFiber.stateNode;\n        const before = getHostSibling(finishedWork);\n"""
-          new = """      if (supportsSingletons) {\n        const parent: Instance = hostParentFiber.stateNode;\n        if (hostParentFiber.flags & ContentReset) {\n          // Reset the text content of the singleton before doing any insertions.\n          resetTextContent(parent);\n          // Clear ContentReset from the effect tag.\n          hostParentFiber.flags &= ~ContentReset;\n        }\n        const before = getHostSibling(finishedWork);\n"""
-          if text.count(old) != 1:
-            raise SystemExit(f'CommitHostEffects target count: {text.count(old)}')
-          effects.write_text(text.replace(old, new))
-
           commit = Path('packages/react-reconciler/src/ReactFiberCommitWork.js')
           text = commit.read_text()
-          old = """        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n        if (flags & Ref) {\n"""
-          new = """        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n        if (finishedWork.flags & ContentReset) {\n          commitHostResetTextContent(finishedWork);\n        }\n        if (flags & Ref) {\n"""
+          old = """      if (supportsSingletons) {\n        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n"""
+          new = """      if (supportsSingletons) {\n        if (finishedWork.flags & ContentReset) {\n          // A singleton cannot be replaced like an ordinary host node, so clear\n          // stale direct text/HTML before committing replacement children.\n          commitHostResetTextContent(finishedWork);\n          finishedWork.flags &= ~ContentReset;\n        }\n        recursivelyTraverseMutationEffects(root, finishedWork, lanes);\n        commitReconciliationEffects(finishedWork, lanes);\n"""
           if text.count(old) != 1:
             raise SystemExit(f'CommitWork HostSingleton target count: {text.count(old)}')
           commit.write_text(text.replace(old, new))
@@ -80,9 +72,8 @@ jobs:
       - name: Commit verified repair
         run: |
           git config user.name "fieldwork-bot"
-          git config user.email "noreply@github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add packages/react-reconciler/src/ReactFiberBeginWork.js \
-                  packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
                   packages/react-reconciler/src/ReactFiberCommitWork.js \
                   packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
                   .github/workflows/fieldwork-host-singleton-repair.yml
