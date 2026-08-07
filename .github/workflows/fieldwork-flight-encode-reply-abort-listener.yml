@@ -1,0 +1,190 @@
+name: Fieldwork Flight encodeReply abort listener repair
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-verify:
+    if: github.repository == 'teamleaderleo/react' && github.event.pull_request.head.ref == 'repair/flight-encode-reply-abort-listener'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Materialize repair and regression tests
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          old = """  return new Promise((resolve, reject) => {
+            const abort = processReply(
+              value,
+              '',
+              options && options.temporaryReferences
+                ? options.temporaryReferences
+                : undefined,
+              resolve,
+              reject,
+            );
+            if (options && options.signal) {
+              const signal = options.signal;
+              if (signal.aborted) {
+                abort((signal as any).reason);
+              } else {
+                const listener = () => {
+                  abort((signal as any).reason);
+                  signal.removeEventListener('abort', listener);
+                };
+                signal.addEventListener('abort', listener);
+              }
+            }
+          });
+          """
+
+          new = """  return new Promise((resolve, reject) => {
+            const signal = options && options.signal;
+            let listener: null | (() => void) = null;
+            let settled = false;
+
+            const cleanup = () => {
+              if (listener !== null && signal !== undefined) {
+                signal.removeEventListener('abort', listener);
+                listener = null;
+              }
+            };
+            const resolveWithCleanup = (body: string | FormData) => {
+              settled = true;
+              cleanup();
+              resolve(body);
+            };
+            const rejectWithCleanup = (error: mixed) => {
+              settled = true;
+              cleanup();
+              reject(error);
+            };
+
+            const abort = processReply(
+              value,
+              '',
+              options && options.temporaryReferences
+                ? options.temporaryReferences
+                : undefined,
+              resolveWithCleanup,
+              rejectWithCleanup,
+            );
+            if (signal !== undefined) {
+              if (signal.aborted) {
+                abort((signal as any).reason);
+              } else if (!settled) {
+                listener = () => {
+                  cleanup();
+                  abort((signal as any).reason);
+                };
+                signal.addEventListener('abort', listener);
+              }
+            }
+          });
+          """
+
+          targets = []
+          for path in Path('packages').glob('react-*/src/client/ReactFlightDOMClient*.js'):
+            text = path.read_text()
+            if 'function encodeReply(' in text and old in text:
+              targets.append(path)
+
+          if len(targets) != 9:
+            raise SystemExit(f'expected exactly 9 encodeReply wrappers, found {len(targets)}: {targets}')
+
+          for path in targets:
+            text = path.read_text()
+            if text.count(old) != 1:
+              raise SystemExit(f'unexpected encodeReply block count in {path}: {text.count(old)}')
+            path.write_text(text.replace(old, new))
+
+          test_path = Path('packages/react-server-dom-webpack/src/__tests__/ReactFlightDOMReply-test.js')
+          text = test_path.read_text()
+          anchor = "  it('can pass undefined as a reply', async () => {\n"
+          if text.count(anchor) != 1:
+            raise SystemExit('test insertion anchor changed')
+          tests = """  it('does not subscribe an AbortSignal after a synchronous reply has settled', async () => {
+            const listeners = new Set();
+            let addCount = 0;
+            const signal = {
+              aborted: false,
+              reason: undefined,
+              addEventListener(type, listener) {
+                expect(type).toBe('abort');
+                addCount++;
+                listeners.add(listener);
+              },
+              removeEventListener(type, listener) {
+                expect(type).toBe('abort');
+                listeners.delete(listener);
+              },
+            };
+
+            await ReactServerDOMClient.encodeReply({hello: 'world'}, {
+              signal: (signal: any),
+            });
+
+            expect(addCount).toBe(0);
+            expect(listeners.size).toBe(0);
+          });
+
+          it('removes the AbortSignal listener after an asynchronous reply settles', async () => {
+            const listeners = new Set();
+            const signal = {
+              aborted: false,
+              reason: undefined,
+              addEventListener(type, listener) {
+                expect(type).toBe('abort');
+                listeners.add(listener);
+              },
+              removeEventListener(type, listener) {
+                expect(type).toBe('abort');
+                listeners.delete(listener);
+              },
+            };
+            let resolve;
+            const pending = new Promise(r => {
+              resolve = r;
+            });
+
+            const bodyPromise = ReactServerDOMClient.encodeReply(
+              {pending},
+              {signal: (signal: any)},
+            );
+            expect(listeners.size).toBe(1);
+
+            resolve('done');
+            await bodyPromise;
+            expect(listeners.size).toBe(0);
+          });
+
+          """
+          test_path.write_text(text.replace(anchor, tests + anchor))
+          PY
+      - name: Focused reply tests
+        run: yarn test ReactFlightDOMReply-test
+      - name: Changed-file lint
+        run: yarn linc
+      - name: Commit validated source packet
+        env:
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          rm .github/workflows/fieldwork-flight-encode-reply-abort-listener.yml
+          git config user.name fieldwork-bot
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages .github/workflows/fieldwork-flight-encode-reply-abort-listener.yml
+          git commit -m "Fix Flight encodeReply abort listener cleanup"
+          git push origin "HEAD:${BRANCH}"
