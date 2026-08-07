@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,88 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,137 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -87,6 +87,51 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +
 +    expect(body.contains(externalLink)).toBe(true);
 +    expect(body.querySelector('div').textContent).toBe('managed child');
++  });
++
++  it('does not reset a singleton again while its Activity is hidden', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++
++    root.render(
++      <React.Activity mode="visible">
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}} />
++        </html>
++      </React.Activity>,
++    );
++    await waitForAll([]);
++
++    root.render(
++      <React.Activity mode="hidden">
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}} />
++        </html>
++      </React.Activity>,
++    );
++    await waitForAll([]);
++    expect(body.textContent).toBe('');
++
++    const externalLink = document.createElement('link');
++    externalLink.rel = 'stylesheet';
++    externalLink.href = 'external.css';
++    body.appendChild(externalLink);
++
++    root.render(
++      <React.Activity mode="hidden">
++        <html>
++          <head />
++          <body>
++            <div>managed child</div>
++          </body>
++        </html>
++      </React.Activity>,
++    );
++    await waitForAll([]);
++
++    expect(body.contains(externalLink)).toBe(true);
 +  });
 +
    // @gate TODO
