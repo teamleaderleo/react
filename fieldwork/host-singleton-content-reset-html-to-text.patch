@@ -1,0 +1,35 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -402,6 +402,32 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.innerHTML).toBe('<span>managed child</span>');
+   });
+ 
++  it('replaces dangerouslySetInnerHTML with text in body', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++
++    root.render(
++      <html>
++        <head />
++        <body dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}} />
++      </html>,
++    );
++    await waitForAll([]);
++    expect(body.innerHTML).toBe('<div>managed old</div>');
++
++    root.render(
++      <html>
++        <head />
++        <body>managed new</body>
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(body.textContent).toBe('managed new');
++    expect(body.querySelector('div')).toBe(null);
++  });
++
+   // @gate TODO
+   it('preserves imperative attributes when acquiring a singleton', async () => {
+     const body = document.body;
