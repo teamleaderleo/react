@@ -3,11 +3,14 @@ name: Verify HostSingleton content reset
 on:
   push:
     branches: [verify/host-singleton-content-reset]
+  pull_request:
+    branches: [main]
 
 permissions: {}
 
 jobs:
   verify:
+    if: github.event_name == 'push' || github.head_ref == 'verify/host-singleton-content-reset'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
