@@ -1,0 +1,27 @@
+name: Fieldwork Flight weak large-string red control
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-red-control:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'research/flight-weak-large-string-settlement'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/flight-weak-large-string-settlement
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Focused weak-thenable text settlement
+        run: yarn test --dev ReactFlightWeakThenableSettlement-test --runInBand
