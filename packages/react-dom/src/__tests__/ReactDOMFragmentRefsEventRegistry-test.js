@@ -73,4 +73,51 @@ describe('FragmentRefs event registry', () => {
     document.getElementById('second').click();
     expect(calls).toEqual(['first', 'second']);
   });
+
+  // @gate enableFragmentRefs
+  it('treats omitted capture and false as the same listener identity', async () => {
+    const fragmentRef = React.createRef();
+    const root = ReactDOMClient.createRoot(container);
+    let showSecondChild;
+
+    function Test() {
+      const [showSecond, setShowSecond] = React.useState(false);
+      showSecondChild = () => setShowSecond(true);
+      return (
+        <Fragment ref={fragmentRef}>
+          <button id="first">First</button>
+          {showSecond && <button id="second">Second</button>}
+        </Fragment>
+      );
+    }
+
+    await act(() => {
+      root.render(<Test />);
+    });
+
+    const calls = [];
+    function removedListener(event) {
+      calls.push(`removed:${event.currentTarget.id}`);
+    }
+    function retainedListener(event) {
+      calls.push(`retained:${event.currentTarget.id}`);
+    }
+
+    fragmentRef.current.addEventListener('click', removedListener);
+    fragmentRef.current.addEventListener('click', retainedListener);
+
+    // Omitted capture and `false` are the same EventTarget listener identity.
+    fragmentRef.current.removeEventListener('click', removedListener, false);
+
+    document.getElementById('first').click();
+    expect(calls).toEqual(['retained:first']);
+
+    await act(() => {
+      showSecondChild();
+    });
+
+    calls.length = 0;
+    document.getElementById('second').click();
+    expect(calls).toEqual(['retained:second']);
+  });
 });

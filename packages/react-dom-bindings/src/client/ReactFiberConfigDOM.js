@@ -3109,7 +3109,7 @@ function normalizeListenerOptions(
   opts: ?EventListenerOptionsOrUseCapture,
 ): string {
   if (opts == null) {
-    return '0';
+    return 'c=0';
   }
 
   if (typeof opts === 'boolean') {
