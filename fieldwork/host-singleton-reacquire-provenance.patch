@@ -1,0 +1,74 @@
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+--- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
++++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+@@ -1,2 +1,3 @@
+ let eventsEnabled: ?boolean = null;
+ let selectionInformation: null | SelectionInformation = null;
++const releasedSingletons: WeakSet<Instance> = new WeakSet();
+@@ -1,8 +1,11 @@
+-  const attributes = instance.attributes;
+-  while (attributes.length) {
+-    instance.removeAttributeNode(attributes[0]);
++  const wasReleased = releasedSingletons.delete(instance);
++  if (!wasReleased) {
++    const attributes = instance.attributes;
++    while (attributes.length) {
++      instance.removeAttributeNode(attributes[0]);
++    }
+   }
+ 
+   setInitialProperties(instance, type, props);
+   precacheFiberNode(internalInstanceHandle, instance);
+   updateFiberProps(instance, props);
+@@ -1,4 +1,5 @@
+   // Only remove state that was represented by this Fiber's props. Attributes
+   // added imperatively while React owned the singleton must be preserved.
+   detachDeletedInstance(instance);
++  releasedSingletons.add(instance);
+ }
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -1,6 +1,43 @@
+     body.dispatchEvent(new document.defaultView.Event('scroll'));
+     expect(onScroll).toHaveBeenCalledTimes(2);
+   });
++
++  it('preserves imperative attributes when a singleton is reacquired after release', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const html = document.documentElement;
++
++    root.render(
++      <html key="en" lang="en" data-react-owned="old">
++        <head />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    // Simulate state written outside React while the singleton is owned.
++    html.setAttribute('data-theme', 'dark');
++    html.setAttribute('data-next', 'external');
++
++    // A key change deletes the old HostSingleton Fiber and places a new one
++    // against the same persistent documentElement instance.
++    root.render(
++      <html key="fr" lang="fr" data-next="react">
++        <head />
++        <body />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.documentElement).toBe(html);
++    // State owned by the released Fiber was removed.
++    expect(html.hasAttribute('data-react-owned')).toBe(false);
++    // State React never owned survives reacquisition.
++    expect(html.getAttribute('data-theme')).toBe('dark');
++    // New React props still win for their own keys.
++    expect(html.getAttribute('data-next')).toBe('react');
++    expect(html.getAttribute('lang')).toBe('fr');
++  });
+ 
+   // @gate __DEV__
+   it('does not release or reacquire singletons when double invoking effects during hydration', async () => {
