@@ -207,7 +207,9 @@ jobs:
       - name: Focused reply tests
         run: yarn test ReactFlightDOMReply-test
       - name: Changed-file lint
-        run: yarn linc
+        run: |
+          git branch main origin/main
+          yarn linc
       - name: Commit validated source packet
         env:
           BRANCH: ${{ github.event.pull_request.head.ref }}
