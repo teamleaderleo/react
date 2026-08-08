@@ -21,7 +21,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
  
    // Update the props handle so that we know which props are the ones with
    // with current event handlers.
-@@ -4740,6 +4750,74 @@ export const supportsSingletons = true;
+@@ -4740,6 +4750,89 @@ export const supportsSingletons = true;
  export function isHostSingletonType(type: string): boolean {
    return type === 'html' || type === 'head' || type === 'body';
  }
@@ -124,7 +124,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
    precacheFiberNode(internalInstanceHandle, instance);
    updateFiberProps(instance, props);
  }
-@@ -4823,10 +4905,15 @@ export function releaseSingletonInstance(
+@@ -4823,7 +4905,13 @@ export function releaseSingletonInstance(
    instance: Instance,
    type: SingletonType,
    props: Props,
@@ -161,7 +161,7 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/pack
    commitNewChildToFragmentInstance,
    deleteChildFromFragmentInstance,
  } from './ReactFiberConfig';
-@@ -325,6 +329,74 @@ function isFragmentInstanceHostParent(fiber: Fiber): boolean {
+@@ -325,4 +329,103 @@ function isFragmentInstanceHostParent(fiber: Fiber): boolean {
    );
  }
  
@@ -265,11 +265,7 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/pack
 +}
 +
  function getHostSibling(fiber: Fiber): ?Instance {
-@@ -358,6 +430,21 @@ function getHostSibling(fiber: Fiber): ?Instance {
-     node.sibling.return = node.return;
-     node = node.sibling;
-     while (
-@@ -368,6 +455,17 @@ function getHostSibling(fiber: Fiber): ?Instance {
+@@ -368,5 +455,17 @@ function getHostSibling(fiber: Fiber): ?Instance {
        // singleton scope. If it is a singleton scope we skip over it because
        // you only insert against this scope when you are already inside of it
 +      if (
@@ -287,7 +283,7 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/pack
        if (
          // $FlowFixMe[constant-condition]
          supportsSingletons &&
-@@ -497,6 +595,19 @@ function commitPlacement(finishedWork: Fiber): void {
+@@ -497,3 +595,19 @@ function commitPlacement(finishedWork: Fiber): void {
    let collectFragmentInstances = enableFragmentRefs;
    let parentFiber = finishedWork.return;
 +
