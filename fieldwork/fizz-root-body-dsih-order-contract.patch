@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
-@@ -9454,6 +9454,68 @@ describe('ReactDOMFizzServer', () => {
+@@ -9454,6 +9454,120 @@ describe('ReactDOMFizzServer', () => {
      );
    });
  
@@ -65,6 +65,58 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packa
 +      'inside-managed-body',
 +      'after-managed-body',
 +    ]);
++  });
++
++  it('keeps root body direct HTML text isolated in body scope', async () => {
++    function App() {
++      return (
++        <>
++          {'before'}
++          <html>
++            <head />
++            <body dangerouslySetInnerHTML={{__html: 'inside'}} />
++          </html>
++          {'after'}
++        </>
++      );
++    }
++
++    await act(() => {
++      const {pipe} = renderToPipeableStream(<App />);
++      pipe(writable);
++    });
++
++    expect(
++      Array.from(document.body.childNodes)
++        .filter(node => node.nodeType === 3)
++        .map(node => node.data),
++    ).toEqual(['before', 'inside', 'after']);
++  });
++
++  it('keeps managed body text isolated in the same body scope', async () => {
++    function App() {
++      return (
++        <>
++          {'before'}
++          <html>
++            <head />
++            <body>{'inside'}</body>
++          </html>
++          {'after'}
++        </>
++      );
++    }
++
++    await act(() => {
++      const {pipe} = renderToPipeableStream(<App />);
++      pipe(writable);
++    });
++
++    expect(
++      Array.from(document.body.childNodes)
++        .filter(node => node.nodeType === 3)
++        .map(node => node.data),
++    ).toEqual(['before', 'inside', 'after']);
 +  });
 +
    it('Can render a <head> outside of a containing <html>', async () => {
