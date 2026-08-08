@@ -31,7 +31,10 @@ describe('ViewTransition image wait cleanup', () => {
 
     originalStartViewTransition = document.startViewTransition;
     originalGetAnimations = Element.prototype.getAnimations;
-    originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, 'fonts');
+    originalFontsDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      'fonts',
+    );
 
     Object.defineProperty(document, 'fonts', {
       configurable: true,
@@ -187,18 +190,21 @@ describe('ViewTransition image wait cleanup', () => {
     expectTemporaryListenerCounts(activeListeners, 0, 0);
   });
 
-  it('removes both temporary listeners when the transition wait times out', async () => {
-    const image = createPendingImage();
-    const activeListeners = trackTemporaryListeners(image);
+  it(
+    'removes both temporary listeners when the transition wait times out',
+    async () => {
+      const image = createPendingImage();
+      const activeListeners = trackTemporaryListeners(image);
 
-    const updateResult = beginTransition([image]);
-    expectTemporaryListenerCounts(activeListeners, 1, 1);
+      const updateResult = beginTransition([image]);
+      expectTemporaryListenerCounts(activeListeners, 1, 1);
 
-    jest.advanceTimersByTime(500);
-    await updateResult;
+      jest.advanceTimersByTime(500);
+      await updateResult;
 
-    expectTemporaryListenerCounts(activeListeners, 0, 0);
-  });
+      expectTemporaryListenerCounts(activeListeners, 0, 0);
+    },
+  );
 
   it(
     'removes earlier image listeners when the byte budget abandons image waits',
