@@ -60,7 +60,7 @@ describe('DevTools composed shutdown settlement', () => {
     };
   }
 
-  function createRealBackend(name, bridges) {
+  function createRealBackend(name, bridges, agents) {
     const Bridge = require('react-devtools-shared/src/bridge').default;
     const Agent = require('react-devtools-shared/src/backend/agent').default;
     const {initBackend} = require('react-devtools-shared/src/backend');
@@ -72,22 +72,36 @@ describe('DevTools composed shutdown settlement', () => {
       }
     }
 
+    class TrackingAgent extends Agent {
+      constructor(...args) {
+        super(...args);
+        agents.push({name, agent: this});
+      }
+    }
+
     return {
-      Agent,
+      Agent: TrackingAgent,
       Bridge: TrackingBridge,
       initBackend,
       setupNativeStyleEditor: null,
     };
   }
 
-  it('settles backend cleanup, Bridge, and manager after one backend cleanup fails', () => {
+  it('settles backend cleanup, Bridge, Agent, and manager after one backend cleanup fails', () => {
     jest.resetModules();
     delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
 
     const bridges = [];
+    const agents = [];
     const backends = new Map();
-    backends.set('backend-a', createRealBackend('backend-a', bridges));
-    backends.set('backend-b', createRealBackend('backend-b', bridges));
+    backends.set(
+      'backend-a',
+      createRealBackend('backend-a', bridges, agents),
+    );
+    backends.set(
+      'backend-b',
+      createRealBackend('backend-b', bridges, agents),
+    );
     const hook = createHook(backends);
     delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
     Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
@@ -115,7 +129,19 @@ describe('DevTools composed shutdown settlement', () => {
         'backend-a',
         'backend-b',
       ]);
+      expect(agents.map(entry => entry.name)).toEqual([
+        'backend-a',
+        'backend-b',
+      ]);
       expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(true);
+
+      const probeCalls = [];
+      for (let i = 0; i < agents.length; i++) {
+        const {name, agent} = agents[i];
+        agent.addListener('fieldwork-probe', () => {
+          probeCalls.push(name);
+        });
+      }
 
       const cleanupError = new Error('renderer cleanup failed once');
       let cleanupCalls = 0;
@@ -146,6 +172,13 @@ describe('DevTools composed shutdown settlement', () => {
           'Cannot send a message through a Bridge that has been shut down.',
         );
       }
+
+      // Agent.shutdown() is also expected to clear its own EventEmitter state.
+      // A shutdown listener failure must not skip that terminal cleanup.
+      for (let i = 0; i < agents.length; i++) {
+        agents[i].agent.emit('fieldwork-probe');
+      }
+      expect(probeCalls).toEqual([]);
 
       expect(hook.reactDevtoolsAgent).toBe(null);
       expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(
