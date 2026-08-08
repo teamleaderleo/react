@@ -27,6 +27,7 @@ jobs:
       - name: Apply Document-safe synthetic dispatch target
         shell: bash
         run: |
+          # Keep the source edit verifier-only; the branch itself remains test/workflow evidence.
           python3 <<'PY'
           from pathlib import Path
           path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
