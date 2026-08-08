@@ -1,0 +1,28 @@
+name: Fieldwork Fabric shared Fragment observer
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-fabric-shared-observer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Run focused Fabric Fragment observer control
+        run: yarn test --dev ReactFabricFragmentRefsSharedObserver-test
+      - name: Flow Fabric
+        run: yarn flow fabric
+      - name: Diff hygiene
+        run: git diff --check
