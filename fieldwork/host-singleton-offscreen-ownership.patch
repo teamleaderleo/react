@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -490,6 +490,225 @@ describe('ReactDOM HostSingleton', () => {
+@@ -490,6 +490,282 @@ describe('ReactDOM HostSingleton', () => {
      body.dispatchEvent(new document.defaultView.Event('scroll'));
      expect(onScroll).toHaveBeenCalledTimes(2);
    });
@@ -222,6 +222,65 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +      expect(latestClick).toHaveBeenCalledTimes(1);
 +      expect(initialClick).toHaveBeenCalledTimes(0);
 +      expect(visibleClick).toHaveBeenCalledTimes(0);
++    },
++  );
++
++  it(
++    'restores hidden singleton children after another owner used direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body>
++              <div id="activity-child">activity child</div>
++            </body>
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++      const activityChild = document.getElementById('activity-child');
++      expect(activityChild).not.toBe(null);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body>
++                <div id="activity-child">activity child</div>
++              </body>
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body
++              dangerouslySetInnerHTML={{__html: '<p id="visible-html">visible</p>'}}
++            />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++      expect(document.getElementById('visible-html')).not.toBe(null);
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body>
++              <div id="activity-child">activity child</div>
++            </body>
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('visible-html')).toBe(null);
++      expect(document.getElementById('activity-child')).toBe(activityChild);
++      expect(body.contains(activityChild)).toBe(true);
 +    },
 +  );
  
