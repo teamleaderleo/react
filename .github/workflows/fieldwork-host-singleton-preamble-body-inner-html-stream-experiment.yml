@@ -17,6 +17,7 @@ jobs:
       - name: Preflight source and contract patches
         run: |
           git apply --check fieldwork/host-singleton-preamble-body-inner-html-stream-experiment.patch
+          git apply --check fieldwork/host-singleton-preamble-body-inner-html-stream-compat.patch
           git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
           git apply --check fieldwork/host-singleton-preamble-opaque-content-contract.patch
       - uses: actions/setup-node@v4
@@ -28,12 +29,17 @@ jobs:
       - name: Apply source and contract patches
         run: |
           git apply fieldwork/host-singleton-preamble-body-inner-html-stream-experiment.patch
+          git apply fieldwork/host-singleton-preamble-body-inner-html-stream-compat.patch
           git apply fieldwork/host-singleton-preamble-ownership-contract.patch
           git apply fieldwork/host-singleton-preamble-opaque-content-contract.patch
       - name: Validate existing Fizz body preamble behavior
         run: >-
           yarn test --dev ReactDOMFizzServer-test
           --testNamePattern="Can render a fallback <body> alongside a non-fallback head"
+      - name: Validate matching hydration of streamed body inner HTML
+        run: >-
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="hydrates a resolved body direct HTML preamble contribution without duplication"
       - name: Require opaque fallback preamble content to be cleaned by boundary takeover
         run: >-
           yarn test --dev ReactDOMFizzServer-test
