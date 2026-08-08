@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   current-content-regression:
@@ -97,81 +97,3 @@ jobs:
         run: yarn test --prod ReactDOMSingletonComponents-test
       - name: Run lint gate
         run: yarn linc
-
-  promote-clean-source:
-    needs: prechild-direct-html
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout verification packet
-        uses: actions/checkout@v4
-        with:
-          path: verification
-      - name: Checkout exact clean source branch
-        uses: actions/checkout@v4
-        with:
-          ref: repair/host-singleton-content-reset
-          path: source
-          fetch-depth: 0
-      - name: Guard reviewed source head and base
-        working-directory: source
-        run: |
-          test "$(git rev-parse HEAD)" = "ed2c1ade64d40761fade7998afe83be62d2d1239"
-          test "$(git rev-parse origin/main)" = "ec61f187fe39b0aa8ec6b508f2553b2047dc30cc"
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: source/.nvmrc
-          cache: yarn
-          cache-dependency-path: source/yarn.lock
-      - name: Apply exact candidate and regression matrix
-        working-directory: source
-        run: |
-          git apply --check ../verification/fieldwork/host-singleton-content-reset-prechild-direct-html.patch
-          git apply ../verification/fieldwork/host-singleton-content-reset-prechild-direct-html.patch
-          git apply --check ../verification/fieldwork/host-singleton-content-reset-regression-matrix.patch
-          git apply ../verification/fieldwork/host-singleton-content-reset-regression-matrix.patch
-      - name: Install dependencies
-        working-directory: source
-        run: yarn install --frozen-lockfile
-      - name: Re-run focused dev suite
-        working-directory: source
-        run: yarn test --dev ReactDOMSingletonComponents-test
-      - name: Re-run focused prod suite
-        working-directory: source
-        run: yarn test --prod ReactDOMSingletonComponents-test
-      - name: Re-run lint gate
-        working-directory: source
-        run: yarn linc
-      - name: Verify transition from reviewed source head
-        working-directory: source
-        run: |
-          git diff --name-only | sort > /tmp/transition-files
-          printf '%s\n' \
-            packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
-            packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
-            packages/react-reconciler/src/ReactFiberBeginWork.js \
-            packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
-            packages/react-reconciler/src/ReactFiberCommitWork.js | sort > /tmp/expected-transition-files
-          diff -u /tmp/expected-transition-files /tmp/transition-files
-      - name: Verify final packet against main
-        working-directory: source
-        run: |
-          git diff --name-only origin/main | sort > /tmp/final-files
-          printf '%s\n' \
-            packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
-            packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
-            packages/react-reconciler/src/ReactFiberBeginWork.js \
-            packages/react-reconciler/src/ReactFiberCommitWork.js | sort > /tmp/expected-final-files
-          diff -u /tmp/expected-final-files /tmp/final-files
-          git diff --quiet origin/main -- packages/react-reconciler/src/ReactFiberCommitHostEffects.js
-      - name: Commit refined source
-        working-directory: source
-        run: |
-          git config user.name "teamleaderleo-fieldwork"
-          git config user.email "13091533+teamleaderleo@users.noreply.github.com"
-          git add packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
-            packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
-            packages/react-reconciler/src/ReactFiberBeginWork.js \
-            packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
-            packages/react-reconciler/src/ReactFiberCommitWork.js
-          git commit -m "fix: repair HostSingleton direct-content ownership"
-          git push origin HEAD:repair/host-singleton-content-reset
