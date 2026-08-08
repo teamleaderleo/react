@@ -1,0 +1,371 @@
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+--- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
++++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+@@ -991,8 +991,18 @@ export function commitUpdate(
+   newProps: Props,
+   internalInstanceHandle: Object,
+ ): void {
++  const hasOpaqueSingletonContent =
++    isSingletonOpaqueContent(type, oldProps) ||
++    isSingletonOpaqueContent(type, newProps);
++  const oldPropsForUpdate = hasOpaqueSingletonContent
++    ? getPropsWithoutSingletonOpaqueContent(oldProps)
++    : oldProps;
++  const newPropsForUpdate = hasOpaqueSingletonContent
++    ? getPropsWithoutSingletonOpaqueContent(newProps)
++    : newProps;
++
+   // Diff and update the properties.
+-  updateProperties(domElement, type, oldProps, newProps);
++  updateProperties(domElement, type, oldPropsForUpdate, newPropsForUpdate);
+ 
+   // Update the props handle so that we know which props are the ones with
+   // with current event handlers.
+@@ -4740,6 +4750,74 @@ export const supportsSingletons = true;
+ export function isHostSingletonType(type: string): boolean {
+   return type === 'html' || type === 'head' || type === 'body';
+ }
++
++type SingletonOpaqueContribution = Array<Node>;
++
++const singletonOpaqueContributions: WeakMap<
++  Object,
++  SingletonOpaqueContribution,
++> = new WeakMap();
++
++export function isSingletonOpaqueContent(type: string, props: Props): boolean {
++  return (
++    type === 'body' &&
++    props.children == null &&
++    shouldSetTextContent(type, props)
++  );
++}
++
++function getPropsWithoutSingletonOpaqueContent(props: Props): Props {
++  if (!isSingletonOpaqueContent('body', props)) {
++    return props;
++  }
++  const nextProps: any = {};
++  for (const propKey in props) {
++    if (
++      hasOwnProperty.call(props, propKey) &&
++      propKey !== 'dangerouslySetInnerHTML'
++    ) {
++      nextProps[propKey] = props[propKey];
++    }
++  }
++  return nextProps;
++}
++
++export function getSingletonOpaqueFirstNode(
++  internalInstanceHandle: Object,
++): null | Node {
++  const contribution = singletonOpaqueContributions.get(internalInstanceHandle);
++  return contribution === undefined || contribution.length === 0
++    ? null
++    : contribution[0];
++}
++
++export function commitSingletonOpaquePlacement(
++  instance: Instance,
++  type: string,
++  props: Props,
++  internalInstanceHandle: Object,
++  before: null | Node,
++): void {
++  if (!isSingletonOpaqueContent(type, props)) {
++    return;
++  }
++  const directHTML: any = props.dangerouslySetInnerHTML;
++  const parser = instance.ownerDocument.createElement('body');
++  parser.innerHTML = directHTML.__html;
++
++  const contribution: Array<Node> = [];
++  const insertionPoint =
++    before !== null && before.parentNode === instance ? before : null;
++  while (parser.firstChild !== null) {
++    const child = parser.firstChild;
++    contribution.push(child);
++    instance.insertBefore(child, insertionPoint);
++  }
++  singletonOpaqueContributions.set(internalInstanceHandle, contribution);
++}
++
++export function clearSingletonOpaqueContent(
++  instance: Instance,
++  internalInstanceHandle: Object,
++): boolean {
++  const contribution = singletonOpaqueContributions.get(internalInstanceHandle);
++  if (contribution === undefined) {
++    return false;
++  }
++  singletonOpaqueContributions.delete(internalInstanceHandle);
++  for (let i = 0; i < contribution.length; i++) {
++    const child = contribution[i];
++    if (child.parentNode === instance) {
++      instance.removeChild(child);
++    }
++  }
++  return true;
++}
+ 
+ export function resolveSingletonInstance(
+   type: string,
+@@ -4814,7 +4892,11 @@ export function acquireSingletonInstance(
+     instance.removeAttributeNode(attributes[0]);
+   }
+ 
+-  setInitialProperties(instance, type, props);
++  setInitialProperties(
++    instance,
++    type,
++    getPropsWithoutSingletonOpaqueContent(props),
++  );
+   precacheFiberNode(internalInstanceHandle, instance);
+   updateFiberProps(instance, props);
+ }
+@@ -4823,10 +4905,15 @@ export function releaseSingletonInstance(
+   instance: Instance,
+   type: SingletonType,
+   props: Props,
++  internalInstanceHandle: Object,
+ ): void {
++  const didClearOpaqueContent = clearSingletonOpaqueContent(
++    instance,
++    internalInstanceHandle,
++  );
++
+   // Remove the attributes and property-backed state owned by this Fiber.
+   clearSingletonProperties(instance, type, props);
+ 
+@@ -4836,7 +4923,7 @@ export function releaseSingletonInstance(
+   // TODO: HostSingleton updates do not currently schedule ContentReset when
+   // dangerouslySetInnerHTML becomes undefined, so an ordinary update can leave
+   // the previous HTML in place. This only handles the release path.
+-  if (props.dangerouslySetInnerHTML != null) {
++  if (props.dangerouslySetInnerHTML != null && !didClearOpaqueContent) {
+     instance.textContent = '';
+   }
+   clearClickListener(instance as any as HTMLElement);
+diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+--- a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
++++ b/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+@@ -55,6 +55,10 @@ import {
+   acquireSingletonInstance,
+   releaseSingletonInstance,
+   isSingletonScope,
++  isSingletonOpaqueContent,
++  getSingletonOpaqueFirstNode,
++  commitSingletonOpaquePlacement,
++  clearSingletonOpaqueContent,
+   commitNewChildToFragmentInstance,
+   deleteChildFromFragmentInstance,
+ } from './ReactFiberConfig';
+@@ -325,6 +329,74 @@ function isFragmentInstanceHostParent(fiber: Fiber): boolean {
+   );
+ }
+ 
++function getSingletonOpaqueFirstNodeForFiber(fiber: Fiber): null | Instance {
++  let firstNode = getSingletonOpaqueFirstNode(fiber);
++  if (firstNode === null && fiber.alternate !== null) {
++    firstNode = getSingletonOpaqueFirstNode(fiber.alternate);
++  }
++  return firstNode as any;
++}
++
++function getOpaqueTransitionInsertionEdge(fiber: Fiber): null | Instance {
++  let parent = fiber.return;
++  while (parent !== null) {
++    if (
++      // $FlowFixMe[constant-condition]
++      supportsSingletons &&
++      parent.tag === HostSingleton
++    ) {
++      const current = parent.alternate;
++      if (
++        current !== null &&
++        isSingletonOpaqueContent(current.type, current.memoizedProps) &&
++        !isSingletonOpaqueContent(parent.type, parent.memoizedProps)
++      ) {
++        const edge = getSingletonOpaqueFirstNodeForFiber(current);
++        if (edge !== null) {
++          return edge;
++        }
++      }
++    }
++    if (parent.tag === HostPortal) {
++      return null;
++    }
++    parent = parent.return;
++  }
++  return null;
++}
++
++function findFirstHostInstance(node: Fiber | null): null | Instance {
++  let current = node;
++  while (current !== null) {
++    if (current.tag === HostComponent || current.tag === HostText) {
++      return current.stateNode;
++    }
++    if (current.tag !== HostPortal && current.child !== null) {
++      const childInstance = findFirstHostInstance(current.child);
++      if (childInstance !== null) {
++        return childInstance;
++      }
++    }
++    current = current.sibling;
++  }
++  return null;
++}
++
++export function commitHostSingletonOpaqueBeforeMutation(
++  finishedWork: Fiber,
++  current: Fiber,
++): void {
++  const oldOpaque = isSingletonOpaqueContent(
++    current.type,
++    current.memoizedProps,
++  );
++  const newOpaque = isSingletonOpaqueContent(
++    finishedWork.type,
++    finishedWork.memoizedProps,
++  );
++  if (!newOpaque) {
++    return;
++  }
++
++  let before = oldOpaque
++    ? getSingletonOpaqueFirstNodeForFiber(current)
++    : findFirstHostInstance(current.child);
++  if (before === null) {
++    before = getHostSibling(finishedWork);
++  }
++  commitSingletonOpaquePlacement(
++    finishedWork.stateNode,
++    finishedWork.type,
++    finishedWork.memoizedProps,
++    finishedWork,
++    before as any,
++  );
++  if (oldOpaque) {
++    clearSingletonOpaqueContent(current.stateNode, current);
++  }
++}
++
++export function commitHostSingletonOpaqueAfterMutation(
++  finishedWork: Fiber,
++  current: Fiber,
++): void {
++  if (
++    isSingletonOpaqueContent(current.type, current.memoizedProps) &&
++    !isSingletonOpaqueContent(finishedWork.type, finishedWork.memoizedProps)
++  ) {
++    clearSingletonOpaqueContent(current.stateNode, current);
++  }
++}
++
+ function getHostSibling(fiber: Fiber): ?Instance {
+@@ -358,6 +430,21 @@ function getHostSibling(fiber: Fiber): ?Instance {
+     node.sibling.return = node.return;
+     node = node.sibling;
+     while (
+@@ -368,6 +455,17 @@ function getHostSibling(fiber: Fiber): ?Instance {
+       // singleton scope. If it is a singleton scope we skip over it because
+       // you only insert against this scope when you are already inside of it
++      if (
++        // $FlowFixMe[constant-condition]
++        supportsSingletons &&
++        node.tag === HostSingleton &&
++        isSingletonOpaqueContent(node.type, node.memoizedProps) &&
++        !(node.flags & Placement)
++      ) {
++        const opaqueSibling = getSingletonOpaqueFirstNodeForFiber(node);
++        if (opaqueSibling !== null) {
++          return opaqueSibling;
++        }
++      }
+       if (
+         // $FlowFixMe[constant-condition]
+         supportsSingletons &&
+@@ -497,6 +595,19 @@ function commitPlacement(finishedWork: Fiber): void {
+   let collectFragmentInstances = enableFragmentRefs;
+   let parentFiber = finishedWork.return;
++
++  if (
++    // $FlowFixMe[constant-condition]
++    supportsSingletons &&
++    finishedWork.tag === HostSingleton &&
++    isSingletonOpaqueContent(finishedWork.type, finishedWork.memoizedProps)
++  ) {
++    commitSingletonOpaquePlacement(
++      finishedWork.stateNode,
++      finishedWork.type,
++      finishedWork.memoizedProps,
++      finishedWork,
++      getHostSibling(finishedWork) as any,
++    );
++  }
++
+   while (parentFiber !== null) {
+@@ -596,7 +707,9 @@ function commitPlacement(finishedWork: Fiber): void {
+     case HostRoot:
+     case HostPortal: {
+       const parent: Container = hostParentFiber.stateNode.containerInfo;
+-      const before = getHostSibling(finishedWork);
++      const opaqueTransitionEdge =
++        getOpaqueTransitionInsertionEdge(finishedWork);
++      const before = opaqueTransitionEdge || getHostSibling(finishedWork);
+       insertOrAppendPlacementNodeIntoContainer(
+         finishedWork,
+         before,
+@@ -846,6 +959,7 @@ export function commitHostSingletonRelease(releasingWork: Fiber) {
+       releasingWork.stateNode,
+       releasingWork.type,
+       releasingWork.memoizedProps,
++      releasingWork,
+     );
+   } else {
+     releaseSingletonInstance(
+@@ -853,6 +967,7 @@ export function commitHostSingletonRelease(releasingWork: Fiber) {
+       releasingWork.stateNode,
+       releasingWork.type,
+       releasingWork.memoizedProps,
++      releasingWork,
+     );
+   }
+ }
+diff --git a/packages/react-reconciler/src/ReactFiberCommitWork.js b/packages/react-reconciler/src/ReactFiberCommitWork.js
+--- a/packages/react-reconciler/src/ReactFiberCommitWork.js
++++ b/packages/react-reconciler/src/ReactFiberCommitWork.js
+@@ -260,6 +260,8 @@ import {
+   commitHostRemoveChildFromContainer,
+   commitHostRemoveChild,
+   commitHostSingletonAcquisition,
++  commitHostSingletonOpaqueBeforeMutation,
++  commitHostSingletonOpaqueAfterMutation,
+   commitHostSingletonRelease,
+   commitFragmentInstanceDeletionEffects,
+   commitFragmentInstanceInsertionEffects,
+@@ -2202,8 +2204,22 @@ function commitMutationEffectsOnFiber(
+     case HostSingleton: {
+       // $FlowFixMe[constant-condition]
+       if (supportsSingletons) {
++        if (
++          current !== null &&
++          flags & Update &&
++          !offscreenSubtreeWasHidden
++        ) {
++          commitHostSingletonOpaqueBeforeMutation(finishedWork, current);
++        }
+         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
+         commitReconciliationEffects(finishedWork, lanes);
++        if (
++          current !== null &&
++          flags & Update &&
++          !offscreenSubtreeWasHidden
++        ) {
++          commitHostSingletonOpaqueAfterMutation(finishedWork, current);
++        }
+         if (flags & Ref) {
+           if (!offscreenSubtreeWasHidden && current !== null) {
+             safelyDetachRef(current, current.return);
