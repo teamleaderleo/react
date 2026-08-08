@@ -16,7 +16,7 @@ let ReactServerDOMServer;
 let ReactServerDOMClient;
 let serverAct;
 
-describe('ReactFlight weak thenable settlement row types', () => {
+describe('ReactFlight pending thenable specialized-row settlement', () => {
   beforeEach(() => {
     jest.resetModules();
     serverAct = require('internal-test-utils').serverAct;
@@ -63,6 +63,54 @@ describe('ReactFlight weak thenable settlement row types', () => {
     return {thenable, settle};
   }
 
+  function createResponse(model) {
+    const stream = ReactServerDOMServer.renderToReadableStream(model);
+    return ReactServerDOMClient.createFromReadableStream(stream, {
+      serverConsumerManifest: {
+        moduleMap: null,
+        moduleLoading: null,
+      },
+    });
+  }
+
+  it('fulfills an already-referenced Promise with a large string', async () => {
+    const expected = 'x'.repeat(5000);
+    let resolveValue;
+    const value = new Promise(resolve => {
+      resolveValue = resolve;
+    });
+    let resolveHold;
+    const hold = new Promise(resolve => {
+      resolveHold = resolve;
+    });
+
+    let response;
+    await serverAct(() => {
+      response = createResponse({value, hold});
+    });
+
+    const result = await response;
+    expect(result.value.status).toBe('pending');
+
+    let receivedValue;
+    result.value.then(resolved => {
+      receivedValue = resolved;
+    });
+
+    await serverAct(() => {
+      resolveValue(expected);
+    });
+    await serverAct(async () => {});
+
+    expect(receivedValue).toBe(expected);
+    expect(await result.value).toBe(expected);
+
+    await serverAct(() => {
+      resolveHold('done');
+    });
+    expect(await result.hold).toBe('done');
+  });
+
   // @gate enableFlightWeakThenables
   it('fulfills an already-referenced weak thenable with a large string', async () => {
     const {thenable, settle} = createWeakThenable();
@@ -74,16 +122,7 @@ describe('ReactFlight weak thenable settlement row types', () => {
 
     let response;
     await serverAct(() => {
-      const stream = ReactServerDOMServer.renderToReadableStream({
-        weak: thenable,
-        hold,
-      });
-      response = ReactServerDOMClient.createFromReadableStream(stream, {
-        serverConsumerManifest: {
-          moduleMap: null,
-          moduleLoading: null,
-        },
-      });
+      response = createResponse({weak: thenable, hold});
     });
 
     // The root model has reached the client and created the `$w` weak chunk,
