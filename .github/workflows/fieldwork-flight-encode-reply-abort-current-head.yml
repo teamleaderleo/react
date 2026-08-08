@@ -1,0 +1,40 @@
+name: Fieldwork Flight encodeReply abort current head
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-flight-encode-reply-abort:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Development reply controls
+        run: >-
+          yarn test --dev
+          ReactFlightDOMReply-test
+          ReactFlightDOMReplyAbortSignal-test
+          --runInBand
+      - name: Production reply controls
+        run: >-
+          yarn test --prod
+          ReactFlightDOMReply-test
+          ReactFlightDOMReplyAbortSignal-test
+          --runInBand
+      - name: Webpack browser Flow
+        run: yarn flow dom-browser
+      - name: Webpack edge Flow
+        run: yarn flow dom-edge-webpack
+      - name: Diff hygiene
+        run: git diff --check
