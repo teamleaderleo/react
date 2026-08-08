@@ -122,4 +122,38 @@ describe('Bridge', () => {
     expect(wall.send).toHaveBeenCalledWith('update', 'value');
     expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
   });
+
+  // @reactVersion >=16.0
+  it('finishes shutting down when a shutdown listener throws', () => {
+    const expectedError = new Error('Failed during shutdown listener');
+    const wallUnlisten = jest.fn();
+    const wall = {
+      listen: jest.fn(() => wallUnlisten),
+      send: jest.fn(),
+    };
+    const bridge = new Bridge(wall);
+
+    bridge.addListener('shutdown', () => {
+      throw expectedError;
+    });
+    bridge.send('update', 'value');
+
+    expect(() => bridge.shutdown()).toThrow(expectedError);
+
+    // A subscriber failure should not leave the Bridge half alive. The rest of
+    // the terminal shutdown sequence still needs to run before the error is
+    // rethrown to the caller.
+    expect(wallUnlisten).toHaveBeenCalledTimes(1);
+    expect(wall.send).toHaveBeenCalledWith('update', 'value');
+    expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
+    expect(() => bridge.send('should not send')).toThrow(
+      'Cannot send a message through a Bridge that has been shut down.',
+    );
+    expect(() => bridge.addListener('event', () => {})).toThrow(
+      'Cannot add a listener through a Bridge that has been shut down.',
+    );
+    expect(() => bridge.shutdown()).toThrow(
+      'Cannot shut down through a Bridge that has been shut down.',
+    );
+  });
 });
