@@ -2083,7 +2083,19 @@ function updateHostSingleton(
     claimHydratableSingleton(workInProgress);
   }
 
-  const nextChildren = workInProgress.pendingProps.children;
+  const nextProps = workInProgress.pendingProps;
+  const prevProps = current !== null ? current.memoizedProps : null;
+  const nextChildren = nextProps.children;
+
+  if (
+    workInProgress.type !== 'html' &&
+    prevProps !== null &&
+    shouldSetTextContent(workInProgress.type, prevProps) &&
+    !shouldSetTextContent(workInProgress.type, nextProps)
+  ) {
+    workInProgress.flags |= ContentReset;
+  }
+
   reconcileChildren(current, workInProgress, nextChildren, renderLanes);
   markRef(current, workInProgress);
   if (current === null) {

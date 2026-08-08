@@ -2216,6 +2216,12 @@ function commitMutationEffectsOnFiber(
       if (supportsSingletons) {
         recursivelyTraverseMutationEffects(root, finishedWork, lanes);
         commitReconciliationEffects(finishedWork, lanes);
+        if (finishedWork.flags & ContentReset) {
+          // If no child placement consumed the reset, clear stale direct
+          // content now. This covers transitions to empty content.
+          commitHostResetTextContent(finishedWork);
+          finishedWork.flags &= ~ContentReset;
+        }
         if (flags & Ref) {
           if (!offscreenSubtreeWasHidden && current !== null) {
             safelyDetachRef(current, current.return);

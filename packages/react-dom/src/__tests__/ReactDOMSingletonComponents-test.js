@@ -271,7 +271,6 @@ describe('ReactDOM HostSingleton', () => {
     expect(body.style.backgroundColor).toBe('blue');
   });
 
-  // @gate TODO
   it('clears dangerouslySetInnerHTML when it becomes undefined', async () => {
     const root = ReactDOMClient.createRoot(document);
     const body = document.body;
@@ -299,7 +298,6 @@ describe('ReactDOM HostSingleton', () => {
     expect(body.textContent).toBe('');
   });
 
-  // @gate TODO
   it('clears dangerouslySetInnerHTML when __html becomes undefined', async () => {
     const root = ReactDOMClient.createRoot(document);
     const body = document.body;
@@ -376,7 +374,6 @@ describe('ReactDOM HostSingleton', () => {
     expect(body.innerHTML).toBe('<span>managed HTML</span>');
   });
 
-  // @gate TODO
   it('replaces dangerouslySetInnerHTML with singleton children', async () => {
     const root = ReactDOMClient.createRoot(document);
     const body = document.body;
