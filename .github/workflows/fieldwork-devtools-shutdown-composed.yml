@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify-composed-repair:
@@ -30,7 +30,6 @@ jobs:
           python3 <<'PY'
           from pathlib import Path
 
-          # Backend/Agent cleanup fanout.
           path = Path('packages/react-devtools-shared/src/backend/index.js')
           text = path.read_text()
           anchor = "import Agent from './agent';\n"
@@ -47,7 +46,6 @@ jobs:
               raise SystemExit('unexpected onAgentShutdown shape')
           path.write_text(text.replace(old, new, 1))
 
-          # Bridge terminalization + reentrancy guard.
           path = Path('packages/react-devtools-shared/src/bridge.js')
           text = path.read_text()
           anchor = "import EventEmitter from './events';\n"
@@ -72,7 +70,6 @@ jobs:
               raise SystemExit('unexpected Bridge shutdown shape')
           path.write_text(text.replace(old, new, 1))
 
-          # Backend-manager pagehide fanout.
           path = Path('packages/react-devtools-extensions/src/contentScripts/backendManager.js')
           text = path.read_text()
           anchor = "import {COMPACT_VERSION_NAME} from 'react-devtools-extensions/src/utils';\n"
@@ -91,10 +88,14 @@ jobs:
           PY
       - name: Build React for DevTools tests
         run: yarn build-for-devtools
-      - name: Run composed shutdown integration control
-        run: yarn test-build-devtools backendManagerShutdownIntegration --runInBand
-      - name: Keep existing Bridge shutdown coverage green
-        run: yarn test-build-devtools bridge-test --runInBand
+      - name: Run complete shutdown control set
+        run: >-
+          yarn test-build-devtools
+          backendShutdown
+          bridge-test
+          backendManagerPageHide
+          backendManagerShutdownIntegration
+          --runInBand
       - name: Diff hygiene
         run: git diff --check
       - name: Prepare formatter base ref
@@ -107,5 +108,38 @@ jobs:
           packages/react-devtools-shared/src/backend/index.js
           packages/react-devtools-shared/src/bridge.js
           packages/react-devtools-extensions/src/contentScripts/backendManager.js
+          packages/react-devtools-shared/src/__tests__/backendShutdown.test.js
+          packages/react-devtools-shared/src/__tests__/bridge-test.js
+          packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerPageHide.test.js
           packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerShutdownIntegration.test.js
           --check
+      - name: Publish clean source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet=/tmp/devtools-shutdown-settlement.tar
+          tar -cf "$packet" \
+            packages/react-devtools-shared/src/backend/index.js \
+            packages/react-devtools-shared/src/bridge.js \
+            packages/react-devtools-extensions/src/contentScripts/backendManager.js \
+            packages/react-devtools-shared/src/__tests__/backendShutdown.test.js \
+            packages/react-devtools-shared/src/__tests__/bridge-test.js \
+            packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerPageHide.test.js \
+            packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerShutdownIntegration.test.js
+
+          git fetch origin main
+          git checkout -B scratch/devtools-shutdown-settlement-source origin/main
+          tar -xf "$packet"
+
+          git config user.name "Fieldwork verifier"
+          git config user.email "fieldwork@users.noreply.github.com"
+          git add \
+            packages/react-devtools-shared/src/backend/index.js \
+            packages/react-devtools-shared/src/bridge.js \
+            packages/react-devtools-extensions/src/contentScripts/backendManager.js \
+            packages/react-devtools-shared/src/__tests__/backendShutdown.test.js \
+            packages/react-devtools-shared/src/__tests__/bridge-test.js \
+            packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerPageHide.test.js \
+            packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerShutdownIntegration.test.js
+          git commit -m "Settle DevTools shutdown after cleanup errors"
+          git push --force-with-lease origin HEAD:refs/heads/scratch/devtools-shutdown-settlement-source
