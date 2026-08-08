@@ -42,5 +42,9 @@ jobs:
         run: yarn test-build-devtools backendManagerWelcome --runInBand
       - name: Diff hygiene
         run: git diff --check
-      - name: Lint changed source
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
         run: yarn prettier packages/react-devtools-extensions/src/contentScripts/backendManager.js packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerWelcome.test.js --check
