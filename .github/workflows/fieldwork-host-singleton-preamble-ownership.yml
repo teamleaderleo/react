@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight contract patch
-        run: git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
+      - name: Preflight contract patches
+        run: |
+          git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
+          git apply --check fieldwork/host-singleton-preamble-opaque-content-contract.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -23,14 +25,20 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
       - name: Apply contract tests only
-        run: git apply fieldwork/host-singleton-preamble-ownership-contract.patch
+        run: |
+          git apply fieldwork/host-singleton-preamble-ownership-contract.patch
+          git apply fieldwork/host-singleton-preamble-opaque-content-contract.patch
       - name: Validate singleton hydration harness
         run: >-
           yarn test --dev ReactDOMSingletonComponents-test
           --testNamePattern="does not release or reacquire singletons when double invoking effects during hydration"
-      - name: Validate changed test file
+      - name: Validate Fizz preamble fallback harness
+        run: >-
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="Can render a fallback <body> alongside a non-fallback head"
+      - name: Validate changed test files
         run: yarn linc
-      - name: Require current source to reproduce preamble ownership gaps
+      - name: Require current source to reproduce preamble attribute ownership gaps
         shell: bash
         run: |
           set -u
@@ -45,3 +53,13 @@ jobs:
 
           expect_current_failure "preserves imperative attributes when clearing a preamble contribution"
           expect_current_failure "clears only contributed style properties from a preamble contribution"
+      - name: Require current source to reproduce opaque preamble content gap
+        shell: bash
+        run: |
+          set -u
+          pattern="clears opaque body content contributed by a discarded preamble boundary"
+          echo "Expecting untouched current source to fail: $pattern"
+          if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
+            echo "Unexpected pass for current-source opaque preamble ownership control."
+            exit 1
+          fi
