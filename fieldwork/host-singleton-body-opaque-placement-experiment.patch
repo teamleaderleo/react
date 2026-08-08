@@ -9,10 +9,10 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 +    isSingletonOpaqueContent(type, oldProps) ||
 +    isSingletonOpaqueContent(type, newProps);
 +  const oldPropsForUpdate = hasOpaqueSingletonContent
-+    ? getPropsWithoutSingletonOpaqueContent(oldProps)
++    ? getPropsWithoutSingletonOpaqueContent(type, oldProps)
 +    : oldProps;
 +  const newPropsForUpdate = hasOpaqueSingletonContent
-+    ? getPropsWithoutSingletonOpaqueContent(newProps)
++    ? getPropsWithoutSingletonOpaqueContent(type, newProps)
 +    : newProps;
 +
    // Diff and update the properties.
@@ -21,7 +21,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
  
    // Update the props handle so that we know which props are the ones with
    // with current event handlers.
-@@ -4740,6 +4750,89 @@ export const supportsSingletons = true;
+@@ -4740,6 +4750,92 @@ export const supportsSingletons = true;
  export function isHostSingletonType(type: string): boolean {
    return type === 'html' || type === 'head' || type === 'body';
  }
@@ -41,8 +41,11 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 +  );
 +}
 +
-+function getPropsWithoutSingletonOpaqueContent(props: Props): Props {
-+  if (!isSingletonOpaqueContent('body', props)) {
++function getPropsWithoutSingletonOpaqueContent(
++  type: string,
++  props: Props,
++): Props {
++  if (!isSingletonOpaqueContent(type, props)) {
 +    return props;
 +  }
 +  const nextProps: any = {};
@@ -119,7 +122,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 +  setInitialProperties(
 +    instance,
 +    type,
-+    getPropsWithoutSingletonOpaqueContent(props),
++    getPropsWithoutSingletonOpaqueContent(type, props),
 +  );
    precacheFiberNode(internalInstanceHandle, instance);
    updateFiberProps(instance, props);
