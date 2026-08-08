@@ -40,13 +40,19 @@ describe('DevTools backend shutdown', () => {
     };
   }
 
-  function createHook(rendererInterfaces) {
+  function createHook(rendererInterfaces, unsubscribeFns) {
+    let unsubscribeIndex = 0;
     return {
       rendererInterfaces,
       hasUnsupportedRendererAttached: false,
       reactDevtoolsAgent: null,
       settings: null,
-      sub: jest.fn(() => jest.fn()),
+      sub: jest.fn(() => {
+        if (unsubscribeFns === undefined) {
+          return jest.fn();
+        }
+        return unsubscribeFns[unsubscribeIndex++];
+      }),
       emit: jest.fn(),
     };
   }
@@ -81,6 +87,54 @@ describe('DevTools backend shutdown', () => {
 
     expect(cleanupA).toHaveBeenCalledTimes(1);
     expect(cleanupB).toHaveBeenCalledTimes(1);
+    expect(hook.reactDevtoolsAgent).toBe(null);
+  });
+
+  it('continues backend cleanup when one hook unsubscribe throws', () => {
+    const {initBackend} = require('react-devtools-shared/src/backend');
+    const expectedError = new Error('unsubscribe A failed');
+    const unsubscribeA = jest.fn(() => {
+      throw expectedError;
+    });
+    const unsubscribeB = jest.fn();
+    const unsubscribeC = jest.fn();
+    const unsubscribeD = jest.fn();
+    const unsubscribeE = jest.fn();
+    const unsubscribeF = jest.fn();
+    const cleanupRenderer = jest.fn();
+    const hook = createHook(
+      new Map([
+        [
+          1,
+          {
+            flushInitialOperations: jest.fn(),
+            cleanup: cleanupRenderer,
+          },
+        ],
+      ]),
+      [
+        unsubscribeA,
+        unsubscribeB,
+        unsubscribeC,
+        unsubscribeD,
+        unsubscribeE,
+        unsubscribeF,
+      ],
+    );
+    const agent = createAgent();
+
+    initBackend(hook, agent, {}, false);
+    expect(hook.reactDevtoolsAgent).toBe(agent);
+
+    expect(() => agent.emit('shutdown')).toThrow(expectedError);
+
+    expect(unsubscribeA).toHaveBeenCalledTimes(1);
+    expect(unsubscribeB).toHaveBeenCalledTimes(1);
+    expect(unsubscribeC).toHaveBeenCalledTimes(1);
+    expect(unsubscribeD).toHaveBeenCalledTimes(1);
+    expect(unsubscribeE).toHaveBeenCalledTimes(1);
+    expect(unsubscribeF).toHaveBeenCalledTimes(1);
+    expect(cleanupRenderer).toHaveBeenCalledTimes(1);
     expect(hook.reactDevtoolsAgent).toBe(null);
   });
 });
