@@ -37,12 +37,16 @@ jobs:
           client = 'packages/react-markup/src/ReactMarkupClient.js'
           replace_once(
               client,
-              "):\u0020Promise<string> {\n  return new Promise((resolve, reject) => {\n    let buffer = '';\n",
-              "):\u0020Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    let buffer = '';\n",
+              "): Promise<string> {\n  return new Promise((resolve, reject) => {\n    let buffer = '';\n",
+              "): Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    let buffer = '';\n",
           )
           text = Path(client).read_text()
-          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 3:
-              raise SystemExit('client terminal-call assumptions changed')
+          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 2:
+              raise SystemExit(
+                  f'client terminal-call assumptions changed: '
+                  f'resolve={text.count("resolve(buffer);")} '
+                  f'reject={text.count("reject(error);")}'
+              )
           text = text.replace('resolve(buffer);', 'resolveWithCleanup(buffer);')
           text = text.replace('reject(error);', 'rejectWithCleanup(error);')
           Path(client).write_text(text)
@@ -55,12 +59,16 @@ jobs:
           server = 'packages/react-markup/src/ReactMarkupServer.js'
           replace_once(
               server,
-              "):\u0020Promise<string> {\n  return new Promise((resolve, reject) => {\n    const flightResponse = createFlightResponse(\n",
-              "):\u0020Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    const flightResponse = createFlightResponse(\n",
+              "): Promise<string> {\n  return new Promise((resolve, reject) => {\n    const flightResponse = createFlightResponse(\n",
+              "): Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    const flightResponse = createFlightResponse(\n",
           )
           text = Path(server).read_text()
-          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 4:
-              raise SystemExit(f'server terminal-call assumptions changed: resolve={text.count("resolve(buffer);")} reject={text.count("reject(error);")}')
+          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 3:
+              raise SystemExit(
+                  f'server terminal-call assumptions changed: '
+                  f'resolve={text.count("resolve(buffer);")} '
+                  f'reject={text.count("reject(error);")}'
+              )
           text = text.replace('resolve(buffer);', 'resolveWithCleanup(buffer);')
           text = text.replace('reject(error);', 'rejectWithCleanup(error);')
           Path(server).write_text(text)
