@@ -1,0 +1,84 @@
+name: Fieldwork react-markup abort listener cleanup
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-abort-listener-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply client/server cleanup experiment
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          client = 'packages/react-markup/src/ReactMarkupClient.js'
+          replace_once(
+              client,
+              "):\u0020Promise<string> {\n  return new Promise((resolve, reject) => {\n    let buffer = '';\n",
+              "):\u0020Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    let buffer = '';\n",
+          )
+          text = Path(client).read_text()
+          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 3:
+              raise SystemExit('client terminal-call assumptions changed')
+          text = text.replace('resolve(buffer);', 'resolveWithCleanup(buffer);')
+          text = text.replace('reject(error);', 'rejectWithCleanup(error);')
+          Path(client).write_text(text)
+          replace_once(
+              client,
+              "    if (options && options.signal) {\n      const signal = options.signal;\n      if (signal.aborted) {\n        abortFizz(fizzRequest, (signal as any).reason);\n      } else {\n        const listener = () => {\n          abortFizz(fizzRequest, (signal as any).reason);\n          signal.removeEventListener('abort', listener);\n        };\n        signal.addEventListener('abort', listener);\n      }\n    }\n",
+              "    if (signal !== null) {\n      if (signal.aborted) {\n        abortFizz(fizzRequest, (signal as any).reason);\n      } else {\n        const listener = () => {\n          cleanupAbortListener();\n          abortFizz(fizzRequest, (signal as any).reason);\n        };\n        abortListener = listener;\n        signal.addEventListener('abort', listener);\n      }\n    }\n",
+          )
+
+          server = 'packages/react-markup/src/ReactMarkupServer.js'
+          replace_once(
+              server,
+              "):\u0020Promise<string> {\n  return new Promise((resolve, reject) => {\n    const flightResponse = createFlightResponse(\n",
+              "):\u0020Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    const flightResponse = createFlightResponse(\n",
+          )
+          text = Path(server).read_text()
+          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 4:
+              raise SystemExit(f'server terminal-call assumptions changed: resolve={text.count("resolve(buffer);")} reject={text.count("reject(error);")}')
+          text = text.replace('resolve(buffer);', 'resolveWithCleanup(buffer);')
+          text = text.replace('reject(error);', 'rejectWithCleanup(error);')
+          Path(server).write_text(text)
+          replace_once(
+              server,
+              "    if (options && options.signal) {\n      const signal = options.signal;\n      if (signal.aborted) {\n        abortFlight(flightRequest, (signal as any).reason);\n        abortFizz(fizzRequest, (signal as any).reason);\n      } else {\n        const listener = () => {\n          abortFlight(flightRequest, (signal as any).reason);\n          abortFizz(fizzRequest, (signal as any).reason);\n          signal.removeEventListener('abort', listener);\n        };\n        signal.addEventListener('abort', listener);\n      }\n    }\n",
+              "    if (signal !== null) {\n      if (signal.aborted) {\n        abortFlight(flightRequest, (signal as any).reason);\n        abortFizz(fizzRequest, (signal as any).reason);\n      } else {\n        const listener = () => {\n          cleanupAbortListener();\n          abortFlight(flightRequest, (signal as any).reason);\n          abortFizz(fizzRequest, (signal as any).reason);\n        };\n        abortListener = listener;\n        signal.addEventListener('abort', listener);\n      }\n    }\n",
+          )
+          PY
+      - name: Focused experimental development controls
+        run: >-
+          yarn test -r=experimental --env=development
+          ReactMarkupClientAbortSignal-test ReactMarkupServerAbortSignal-test
+      - name: Focused experimental production controls
+        run: >-
+          yarn test -r=experimental --env=production
+          ReactMarkupClientAbortSignal-test ReactMarkupServerAbortSignal-test
+      - name: Flow markup
+        run: yarn flow markup
+      - name: Diff hygiene
+        run: git diff --check
