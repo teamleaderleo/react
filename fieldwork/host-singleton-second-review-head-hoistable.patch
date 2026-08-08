@@ -1,0 +1,118 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -402,6 +402,107 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.innerHTML).toBe('<span>managed child</span>');
+   });
+ 
++  it(
++    'preserves a stable hoistable when head leaves direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const head = document.head;
++
++      root.render(
++        <html>
++          <head dangerouslySetInnerHTML={{__html: ''}} />
++          <body />
++        </html>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <html>
++          <head dangerouslySetInnerHTML={{__html: ''}} />
++          <body>
++            <meta
++              name="stable-hoistable"
++              content="keep"
++              data-meaningful="true"
++            />
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      const hoistable = head.querySelector('meta[name="stable-hoistable"]');
++      expect(hoistable).not.toBe(null);
++
++      root.render(
++        <html>
++          <head>
++            <title>managed title</title>
++          </head>
++          <body>
++            <meta
++              name="stable-hoistable"
++              content="keep"
++              data-meaningful="true"
++            />
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(head.querySelector('meta[name="stable-hoistable"]')).toBe(
++        hoistable,
++      );
++      expect(head.contains(hoistable)).toBe(true);
++      expect(head.querySelector('title').textContent).toBe('managed title');
++    },
++  );
++
++  it(
++    'preserves a stable hoistable when releasing head direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const head = document.head;
++
++      root.render(
++        <html>
++          <head dangerouslySetInnerHTML={{__html: ''}} />
++          <body />
++        </html>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <html>
++          <head dangerouslySetInnerHTML={{__html: ''}} />
++          <body>
++            <meta
++              name="stable-hoistable-release"
++              content="keep"
++              data-meaningful="true"
++            />
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      const hoistable = head.querySelector(
++        'meta[name="stable-hoistable-release"]',
++      );
++      expect(hoistable).not.toBe(null);
++
++      root.render(
++        <html>
++          <body>
++            <meta
++              name="stable-hoistable-release"
++              content="keep"
++              data-meaningful="true"
++            />
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(head.querySelector('meta[name="stable-hoistable-release"]')).toBe(
++        hoistable,
++      );
++      expect(head.contains(hoistable)).toBe(true);
++    },
++  );
++
+   // @gate TODO
+   it('preserves imperative attributes when acquiring a singleton', async () => {
+     const body = document.body;
