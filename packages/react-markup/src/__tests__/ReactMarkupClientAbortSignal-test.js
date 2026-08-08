@@ -14,20 +14,26 @@ let ReactMarkup;
 
 function createTrackedSignal() {
   const listeners = new Set();
-  return {
-    signal: {
-      aborted: false,
-      reason: undefined,
-      addEventListener(type, listener) {
-        expect(type).toBe('abort');
-        listeners.add(listener);
-      },
-      removeEventListener(type, listener) {
-        expect(type).toBe('abort');
-        listeners.delete(listener);
-      },
+  const signal = {
+    aborted: false,
+    reason: undefined,
+    addEventListener(type, listener) {
+      expect(type).toBe('abort');
+      listeners.add(listener);
     },
+    removeEventListener(type, listener) {
+      expect(type).toBe('abort');
+      listeners.delete(listener);
+    },
+  };
+  return {
+    signal,
     listeners,
+    abort(reason) {
+      signal.aborted = true;
+      signal.reason = reason;
+      Array.from(listeners).forEach(listener => listener());
+    },
   };
 }
 
@@ -65,6 +71,28 @@ if (!__EXPERIMENTAL__) {
         ReactMarkup.experimental_renderToHTML(<Component />, {signal}),
       ).rejects.toBe(expectedError);
 
+      expect(listeners.size).toBe(0);
+    });
+
+    it('releases the abort listener while preserving the abort reason', async () => {
+      const {signal, listeners, abort} = createTrackedSignal();
+      const pending = new Promise(() => {});
+      const expectedError = new Error('client render aborted');
+
+      function Component() {
+        React.use(pending);
+        return null;
+      }
+
+      const renderPromise = ReactMarkup.experimental_renderToHTML(
+        <Component />,
+        {signal},
+      );
+      expect(listeners.size).toBe(1);
+
+      abort(expectedError);
+
+      await expect(renderPromise).rejects.toBe(expectedError);
       expect(listeners.size).toBe(0);
     });
   });
