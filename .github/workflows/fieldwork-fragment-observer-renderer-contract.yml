@@ -1,0 +1,66 @@
+name: Fieldwork Fragment observer renderer contract
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renderer-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Extend non-DOM Fragment deletion signatures only
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'packages/react-test-renderer/src/ReactFiberConfigTestHost.js',
+              "export function deleteChildFromFragmentInstance(\n  child: Instance,\n  fragmentInstance: FragmentInstanceType,\n): void {",
+              "export function deleteChildFromFragmentInstance(\n  child: Instance,\n  fragmentInstance: FragmentInstanceType,\n  _releaseObserverOwnership?: boolean,\n): void {",
+          )
+
+          replace_once(
+              'packages/react-native-renderer/src/ReactFiberConfigFabric.js',
+              "export function deleteChildFromFragmentInstance(\n  childInstance: Instance | TextInstance,\n  fragmentInstance: FragmentInstanceType,\n): void {",
+              "export function deleteChildFromFragmentInstance(\n  childInstance: Instance | TextInstance,\n  fragmentInstance: FragmentInstanceType,\n  _releaseObserverOwnership?: boolean,\n): void {",
+          )
+          PY
+      - name: Flow test renderer
+        run: yarn flow test
+      - name: Flow Fabric renderer
+        run: yarn flow fabric
+      - name: Flow DOM renderer
+        run: yarn flow dom-browser
+      - name: Focused ownership controls development
+        run: >-
+          yarn test --dev
+          ReactDOMFragmentRefsSharedObserver-test
+          ReactDOMFragmentRefsSingletonObserverOwnership-test
+      - name: Focused ownership controls production
+        run: >-
+          yarn test --prod
+          ReactDOMFragmentRefsSharedObserver-test
+          ReactDOMFragmentRefsSingletonObserverOwnership-test
+      - name: Diff hygiene
+        run: git diff --check
