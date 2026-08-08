@@ -148,6 +148,7 @@ import {flushSyncWork as flushSyncWorkOnAllRoots} from 'react-reconciler/src/Rea
 import {requestFormReset as requestFormResetOnFiber} from 'react-reconciler/src/ReactFiberHooks';
 
 import ReactDOMSharedInternals from 'shared/ReactDOMSharedInternals';
+import reportGlobalError from 'shared/reportGlobalError';
 
 export {default as rendererVersion} from 'shared/ReactVersion';
 
@@ -2382,7 +2383,7 @@ export function startViewTransition(
       }
     };
     transition.ready.then(readyCallback, handleError);
-    transition.finished.finally(() => {
+    runWhenViewTransitionFinished(transition, () => {
       for (let i = 0; i < viewTransitionAnimations.length; i++) {
         // In Safari, we need to manually cancel all manually started animations
         // or it'll block or interfer with future transitions.
@@ -2827,7 +2828,7 @@ export function startGestureTransition(
       }
     };
     transition.ready.then(readyForAnimations, handleError);
-    transition.finished.finally(() => {
+    runWhenViewTransitionFinished(transition, () => {
       for (let i = 0; i < viewTransitionAnimations.length; i++) {
         // In Safari, we need to manually cancel all manually started animations
         // or it'll block or interfer with future transitions.
@@ -2868,6 +2869,20 @@ export function startGestureTransition(
   }
 }
 
+function runWhenViewTransitionFinished(
+  transition: RunningViewTransition,
+  callback: () => void,
+): void {
+  const runCallback = () => {
+    try {
+      callback();
+    } catch (error) {
+      reportGlobalError(error);
+    }
+  };
+  transition.finished.then(runCallback, runCallback);
+}
+
 export function stopViewTransition(transition: RunningViewTransition) {
   transition.skipTransition();
 }
@@ -2876,7 +2891,7 @@ export function addViewTransitionFinishedListener(
   transition: RunningViewTransition,
   callback: () => void,
 ) {
-  transition.finished.finally(callback);
+  runWhenViewTransitionFinished(transition, callback);
 }
 
 interface ViewTransitionPseudoElementType extends mixin$Animatable {
