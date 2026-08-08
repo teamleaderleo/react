@@ -1,0 +1,78 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+@@ -9446,6 +9446,65 @@ describe('ReactDOMFizzServer', () => {
+     );
+   });
+ 
++  it('hydrates a resolved body direct HTML preamble contribution without duplication', async () => {
++    let resolveBody;
++    const bodyPromise = new Promise(resolve => {
++      resolveBody = resolve;
++    });
++
++    function AsyncBody() {
++      const html = use(bodyPromise);
++      return (
++        <body
++          data-primary=""
++          dangerouslySetInnerHTML={{
++            __html: html,
++          }}
++        />
++      );
++    }
++
++    function App() {
++      return (
++        <html>
++          <head />
++          <Suspense fallback={null}>
++            <AsyncBody />
++          </Suspense>
++        </html>
++      );
++    }
++
++    let content = '';
++    writable.on('data', chunk => (content += chunk));
++
++    let shellReady = false;
++    await act(() => {
++      const {pipe} = renderToPipeableStream(<App />, {
++        onShellReady() {
++          shellReady = true;
++        },
++      });
++      pipe(writable);
++    });
++
++    expect(shellReady).toBe(true);
++    expect(content).toBe('');
++
++    await act(() => {
++      resolveBody('<div id="resolved-opaque-body">resolved</div>');
++    });
++
++    expect(content).toMatch(/^<!DOCTYPE html>/);
++    const opaqueBodyChild = document.getElementById('resolved-opaque-body');
++    expect(opaqueBodyChild).not.toBe(null);
++
++    const recoverableErrors = [];
++    const root = ReactDOMClient.hydrateRoot(document, <App />, {
++      onRecoverableError(error) {
++        recoverableErrors.push(error);
++      },
++    });
++    await waitForAll([]);
++
++    expect(recoverableErrors).toEqual([]);
++    expect(document.getElementById('resolved-opaque-body')).toBe(opaqueBodyChild);
++    expect(document.querySelectorAll('#resolved-opaque-body')).toHaveLength(1);
++
++    root.unmount();
++  });
++
+   it('can render preamble tags in deeply nested indirect component trees', async () => {
+     function App() {
+       return (
