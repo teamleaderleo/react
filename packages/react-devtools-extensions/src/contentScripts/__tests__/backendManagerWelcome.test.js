@@ -28,7 +28,11 @@ describe('DevTools backend manager welcome boundary', () => {
     try {
       jest.resetModules();
       delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
-      window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook;
+      delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
+        configurable: true,
+        value: hook,
+      });
       require('../backendManager');
 
       window.dispatchEvent(
