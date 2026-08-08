@@ -148,7 +148,7 @@ function setup(hook: ?DevToolsHook) {
 
   let didCleanup = false;
   let unsubscribeShutdownListener: (() => void) | null = null;
-  const cleanup = () => {
+  const cleanup = (): void => {
     if (didCleanup) {
       return;
     }
