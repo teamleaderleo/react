@@ -1,18 +1,15 @@
 name: Fieldwork Fragment document dispatch repair verifier
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+  push:
+    branches: [verify/fragment-document-dispatch-repair]
 
 permissions:
   contents: read
 
 jobs:
   verify-repair:
-    if: >-
-      github.repository == 'teamleaderleo/react' &&
-      github.event.pull_request.head.ref == 'verify/fragment-document-dispatch-repair'
+    if: github.repository == 'teamleaderleo/react'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
