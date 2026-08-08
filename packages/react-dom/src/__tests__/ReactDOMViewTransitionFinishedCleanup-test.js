@@ -19,9 +19,13 @@ let originalGetBoundingClientRect;
 let originalGetAnimations;
 let originalAnimate;
 let originalStartViewTransition;
+let originalReportError;
 
 describe('ReactDOM ViewTransition finished cleanup', () => {
   beforeEach(() => {
+    originalReportError = global.reportError;
+    global.reportError = jest.fn();
+
     jest.resetModules();
     React = require('react');
     ReactDOMClient = require('react-dom/client');
@@ -72,12 +76,18 @@ describe('ReactDOM ViewTransition finished cleanup', () => {
     } else {
       delete document.startViewTransition;
     }
+    if (originalReportError === undefined) {
+      delete global.reportError;
+    } else {
+      global.reportError = originalReportError;
+    }
   });
 
-  // @gate enableViewTransition
-  it('does not recreate a rejected child from a handled finished promise', async () => {
+  function createTrackedFinished() {
+    let resolveFinished;
     let rejectFinished;
     const sourceFinished = new Promise((resolve, reject) => {
+      resolveFinished = resolve;
       rejectFinished = reject;
     });
     // The platform marks ViewTransition.finished handled so that an update
@@ -97,21 +107,25 @@ describe('ReactDOM ViewTransition finished cleanup', () => {
       return child;
     }
 
-    // Track the Promise returned by whichever registration primitive React
-    // chooses. This makes the regression deterministic instead of relying on
-    // the test runner's process-wide unhandled-rejection behavior.
-    const finished = {
-      then(onFulfilled, onRejected) {
-        return trackChild(
-          'then',
-          sourceFinished.then(onFulfilled, onRejected),
-        );
+    return {
+      finished: {
+        then(onFulfilled, onRejected) {
+          return trackChild(
+            'then',
+            sourceFinished.then(onFulfilled, onRejected),
+          );
+        },
+        finally(onFinally) {
+          return trackChild('finally', sourceFinished.finally(onFinally));
+        },
       },
-      finally(onFinally) {
-        return trackChild('finally', sourceFinished.finally(onFinally));
-      },
+      resolveFinished,
+      rejectFinished,
+      childSettlements,
     };
+  }
 
+  function installViewTransition(finished) {
     document.startViewTransition = function ({update}) {
       update();
       return {
@@ -120,8 +134,9 @@ describe('ReactDOM ViewTransition finished cleanup', () => {
         skipTransition() {},
       };
     };
+  }
 
-    const cleanup = jest.fn();
+  async function renderEnteringViewTransition(cleanup) {
     function App({show}) {
       if (!show) {
         return null;
@@ -142,18 +157,54 @@ describe('ReactDOM ViewTransition finished cleanup', () => {
         root.render(<App show={true} />);
       });
     });
+  }
 
-    expect(cleanup).not.toHaveBeenCalled();
-
-    const rejection = new Error('view transition update failed');
+  async function flushPromiseSettlements() {
     await act(async () => {
-      rejectFinished(rejection);
       await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
+  }
+
+  // @gate enableViewTransition
+  it('does not recreate a rejected child from a handled finished promise', async () => {
+    const {finished, rejectFinished, childSettlements} =
+      createTrackedFinished();
+    installViewTransition(finished);
+
+    const cleanup = jest.fn();
+    await renderEnteringViewTransition(cleanup);
+    expect(cleanup).not.toHaveBeenCalled();
+
+    const rejection = new Error('view transition update failed');
+    rejectFinished(rejection);
+    await flushPromiseSettlements();
 
     expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(
+      childSettlements.filter(settlement => settlement.status === 'rejected'),
+    ).toEqual([]);
+  });
+
+  // @gate enableViewTransition
+  it('reports a throwing cleanup without rejecting the registration child', async () => {
+    const {finished, resolveFinished, childSettlements} =
+      createTrackedFinished();
+    installViewTransition(finished);
+
+    const cleanupError = new Error('view transition cleanup failed');
+    const cleanup = jest.fn(() => {
+      throw cleanupError;
+    });
+    await renderEnteringViewTransition(cleanup);
+    expect(cleanup).not.toHaveBeenCalled();
+
+    resolveFinished();
+    await flushPromiseSettlements();
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(global.reportError).toHaveBeenCalledWith(cleanupError);
     expect(
       childSettlements.filter(settlement => settlement.status === 'rejected'),
     ).toEqual([]);
