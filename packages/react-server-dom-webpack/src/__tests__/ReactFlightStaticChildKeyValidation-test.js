@@ -16,9 +16,9 @@ global.WritableStream =
 global.TextEncoder = require('util').TextEncoder;
 global.TextDecoder = require('util').TextDecoder;
 
-const {
-  patchMessageChannel,
-} = require('../../../../scripts/jest/patchMessageChannel');
+const {patchMessageChannel} = require(
+  '../../../../scripts/jest/patchMessageChannel',
+);
 
 let clientExports;
 let webpackMap;
@@ -112,7 +112,13 @@ describe('ReactFlight static child key validation', () => {
 
   it('still warns for a genuine dynamic list without keys', async () => {
     const DynamicList = clientExports(function DynamicList({items}) {
-      return <div>{items.map(item => <span>{item}</span>)}</div>;
+      return (
+        <div>
+          {items.map(item => (
+            <span>{item}</span>
+          ))}
+        </div>
+      );
     });
 
     const stream = await serverAct(() =>
