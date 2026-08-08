@@ -35,7 +35,23 @@ export function experimental_renderToHTML(
   children: ReactNodeList,
   options?: MarkupOptions,
 ): Promise<string> {
+  const signal = options && options.signal ? options.signal : null;
   return new Promise((resolve, reject) => {
+    let abortListener: null | (() => void) = null;
+    function cleanupAbortListener() {
+      if (signal !== null && abortListener !== null) {
+        signal.removeEventListener('abort', abortListener);
+        abortListener = null;
+      }
+    }
+    function resolveWithCleanup(value: string) {
+      cleanupAbortListener();
+      resolve(value);
+    }
+    function rejectWithCleanup(error: mixed) {
+      cleanupAbortListener();
+      reject(error);
+    }
     let buffer = '';
     const fizzDestination = {
       push(chunk: string | null): boolean {
@@ -43,19 +59,19 @@ export function experimental_renderToHTML(
           buffer += chunk;
         } else {
           // null indicates that we finished
-          resolve(buffer);
+          resolveWithCleanup(buffer);
         }
         return true;
       },
       destroy(error: mixed) {
-        reject(error);
+        rejectWithCleanup(error);
       },
     };
     function handleError(error: mixed, errorInfo: ErrorInfo) {
       // Any error rejects the promise, regardless of where it happened.
       // Unlike other React SSR we don't want to put Suspense boundaries into
       // client rendering mode because there's no client rendering here.
-      reject(error);
+      rejectWithCleanup(error);
 
       const onError = options && options.onError;
       if (onError) {
@@ -87,15 +103,15 @@ export function experimental_renderToHTML(
       undefined,
       undefined,
     );
-    if (options && options.signal) {
-      const signal = options.signal;
+    if (signal !== null) {
       if (signal.aborted) {
         abortFizz(fizzRequest, (signal as any).reason);
       } else {
         const listener = () => {
+          cleanupAbortListener();
           abortFizz(fizzRequest, (signal as any).reason);
-          signal.removeEventListener('abort', listener);
         };
+        abortListener = listener;
         signal.addEventListener('abort', listener);
       }
     }
