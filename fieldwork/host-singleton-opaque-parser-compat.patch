@@ -1,0 +1,118 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -343,6 +343,45 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.innerHTML).toBe('<span>second</span>');
+   });
+ 
++  it('keeps scripts inert when body uses dangerouslySetInnerHTML', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++    const ownerWindow = document.defaultView;
++    ownerWindow.__opaqueBodyScriptRan = 0;
++
++    root.render(
++      <html>
++        <head />
++        <body
++          dangerouslySetInnerHTML={{
++            __html:
++              '<script>window.__opaqueBodyScriptRan++</script>' +
++              '<span id="opaque-script-control">first</span>',
++          }}
++        />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(ownerWindow.__opaqueBodyScriptRan).toBe(0);
++    expect(document.getElementById('opaque-script-control')).not.toBe(null);
++
++    root.render(
++      <html>
++        <head />
++        <body
++          dangerouslySetInnerHTML={{
++            __html:
++              '<script>window.__opaqueBodyScriptRan++</script>' +
++              '<span id="opaque-script-control-next">second</span>',
++          }}
++        />
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(ownerWindow.__opaqueBodyScriptRan).toBe(0);
++    expect(document.getElementById('opaque-script-control-next')).not.toBe(null);
++  });
++
+   it('replaces singleton children with dangerouslySetInnerHTML', async () => {
+     const root = ReactDOMClient.createRoot(document);
+     const body = document.body;
+diff --git a/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js b/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js
+--- a/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js
++++ b/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js
+@@ -92,6 +92,65 @@ describe('when Trusted Types are available in global object', () => {
+     }
+   });
+ 
++  it('should not stringify trusted values for body singleton direct HTML', async () => {
++    const innerHTMLDescriptor = Object.getOwnPropertyDescriptor(
++      Element.prototype,
++      'innerHTML',
++    );
++    try {
++      const innerHTMLCalls = [];
++      Object.defineProperty(Element.prototype, 'innerHTML', {
++        get() {
++          return innerHTMLDescriptor.get.apply(this, arguments);
++        },
++        set(value) {
++          innerHTMLCalls.push([this, value]);
++          return innerHTMLDescriptor.set.apply(this, arguments);
++        },
++      });
++
++      const root = ReactDOMClient.createRoot(document);
++      await act(() => {
++        root.render(
++          <html>
++            <head />
++            <body dangerouslySetInnerHTML={{__html: ttObject1}} />
++          </html>,
++        );
++      });
++
++      expect(document.body.innerHTML).toBe('<b>Hi</b>');
++      expect(innerHTMLCalls.length).toBe(1);
++      expect(innerHTMLCalls[0][0].tagName).toBe('BODY');
++      expect(innerHTMLCalls[0][1]).toBe(ttObject1);
++
++      innerHTMLCalls.length = 0;
++      await act(() => {
++        root.render(
++          <html>
++            <head />
++            <body dangerouslySetInnerHTML={{__html: ttObject2}} />
++          </html>,
++        );
++      });
++
++      expect(document.body.innerHTML).toBe('<b>Bye</b>');
++      expect(innerHTMLCalls.length).toBe(1);
++      expect(innerHTMLCalls[0][0].tagName).toBe('BODY');
++      expect(innerHTMLCalls[0][1]).toBe(ttObject2);
++
++      await act(() => root.unmount());
++    } finally {
++      Object.defineProperty(
++        Element.prototype,
++        'innerHTML',
++        innerHTMLDescriptor,
++      );
++    }
++  });
++
+   it('should not stringify trusted values for setAttribute (unknown attribute)', async () => {
+     const setAttribute = Element.prototype.setAttribute;
+     try {

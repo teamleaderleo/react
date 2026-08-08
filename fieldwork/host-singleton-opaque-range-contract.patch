@@ -1,0 +1,298 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -343,6 +343,281 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.innerHTML).toBe('<span>second</span>');
+   });
+ 
++  it(
++    'preserves outside body style during initial direct HTML acquisition',
++    async () => {
++      const body = document.body;
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'initial');
++      externalStyle.textContent = '.outside-initial { color: red; }';
++      body.appendChild(externalStyle);
++
++      const root = ReactDOMClient.createRoot(document);
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<div id="opaque-initial">opaque</div>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.body).toBe(body);
++      expect(document.getElementById('opaque-initial')).not.toBe(null);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'preserves outside body style during direct HTML update',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<div id="opaque-first">first</div>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'update');
++      externalStyle.textContent = '.outside-update { color: blue; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<span id="opaque-second">second</span>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('opaque-first')).toBe(null);
++      expect(document.getElementById('opaque-second')).not.toBe(null);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'preserves outside body style when managed children become direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body>
++            <div id="managed-before-opaque">managed</div>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'managed-to-opaque');
++      externalStyle.textContent = '.managed-to-opaque { color: green; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<span id="opaque-after-managed">opaque</span>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('managed-before-opaque')).toBe(null);
++      expect(document.getElementById('opaque-after-managed')).not.toBe(null);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'keeps outside body styles around the same slot when direct HTML becomes managed children',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<div id="opaque-slot">opaque</div>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const outsideBefore = document.createElement('style');
++      outsideBefore.setAttribute('data-outside-style', 'before');
++      outsideBefore.textContent = '.outside-before { color: red; }';
++      body.insertBefore(outsideBefore, body.firstChild);
++
++      const outsideAfter = document.createElement('style');
++      outsideAfter.setAttribute('data-outside-style', 'after');
++      outsideAfter.textContent = '.outside-after { color: blue; }';
++      body.appendChild(outsideAfter);
++
++      root.render(
++        <html>
++          <head />
++          <body>
++            <span id="managed-slot">managed</span>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      const managed = document.getElementById('managed-slot');
++      expect(document.getElementById('opaque-slot')).toBe(null);
++      expect(managed).not.toBe(null);
++      expect(Array.from(body.childNodes)).toEqual([
++        outsideBefore,
++        managed,
++        outsideAfter,
++      ]);
++    },
++  );
++
++  it(
++    'preserves later outside body style when releasing empty direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: ''}} />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'empty-release');
++      externalStyle.textContent = '.empty-release { color: purple; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.body).toBe(body);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'removes opaque owned style while preserving outside style',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html:
++                '<style id="opaque-owned-style">.owned { color: red; }</style>' +
++                '<div id="opaque-owned-node">opaque</div>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'reversing-control');
++      externalStyle.textContent = '.outside { color: blue; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++          <body>
++            <span id="managed-after-opaque-style">managed</span>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('opaque-owned-style')).toBe(null);
++      expect(document.getElementById('opaque-owned-node')).toBe(null);
++      expect(document.getElementById('managed-after-opaque-style')).not.toBe(
++        null,
++      );
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'preserves outside body style added before hydrating opaque HTML',
++    async () => {
++      const serverHTML = '<div id="hydrated-opaque">server opaque</div>';
++
++      await actIntoEmptyDocument(() => {
++        const {pipe} = ReactDOMFizzServer.renderToPipeableStream(
++          <html>
++            <head />
++            <body dangerouslySetInnerHTML={{__html: serverHTML}} />
++          </html>,
++        );
++        pipe(writable);
++      });
++
++      const body = document.body;
++      const hydratedOpaque = document.getElementById('hydrated-opaque');
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'pre-hydration');
++      externalStyle.textContent = '.pre-hydration { color: orange; }';
++      body.appendChild(externalStyle);
++
++      const root = ReactDOMClient.hydrateRoot(
++        document,
++        <html>
++          <head />
++          <body
++            suppressHydrationWarning={true}
++            dangerouslySetInnerHTML={{__html: serverHTML}}
++          />
++        </html>,
++        {onRecoverableError() {}},
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('hydrated-opaque')).toBe(hydratedOpaque);
++      expect(body.contains(externalStyle)).toBe(true);
++
++      root.render(
++        <html>
++          <head />
++          <body>
++            <span id="managed-after-hydration">managed</span>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('hydrated-opaque')).toBe(null);
++      expect(document.getElementById('managed-after-hydration')).not.toBe(
++        null,
++      );
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
+   it('replaces singleton children with dangerouslySetInnerHTML', async () => {
+     const root = ReactDOMClient.createRoot(document);
+     const body = document.body;

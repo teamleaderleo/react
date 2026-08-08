@@ -1,0 +1,87 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOM-test.js b/packages/react-dom/src/__tests__/ReactDOM-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOM-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOM-test.js
+@@ -1001,5 +1001,79 @@ describe('ReactDOM', () => {
+       '<html lang="en"><head><meta itemprop="" content="primary" style=""></head><body><div style="">goodbye!</div></body></html>',
+     );
+   });
++
++  it('preserves primary document children across an opaque body fallback', async () => {
++    let suspendOnNewMessage;
++    let currentMessage;
++    let resolveCurrentMessage;
++
++    function createNewMessage() {
++      currentMessage = new Promise(resolve => {
++        resolveCurrentMessage = resolve;
++      });
++      return currentMessage;
++    }
++
++    createNewMessage();
++    resolveCurrentMessage('primary');
++
++    function Message() {
++      const [pendingMessage, setPendingMessage] = React.useState(currentMessage);
++      suspendOnNewMessage = () => {
++        setPendingMessage(createNewMessage());
++      };
++      return React.use(pendingMessage);
++    }
++
++    const fallback = (
++      <html data-fallback="">
++        <head />
++        <body
++          data-fallback=""
++          dangerouslySetInnerHTML={{
++            __html: '<div id="opaque-fallback">fallback</div>',
++          }}
++        />
++      </html>
++    );
++
++    function App() {
++      return (
++        <React.Suspense fallback={fallback}>
++          <html lang="en">
++            <head />
++            <body>
++              <div id="primary-document-child">
++                <Message />
++              </div>
++            </body>
++          </html>
++        </React.Suspense>
++      );
++    }
++
++    const root = ReactDOMClient.createRoot(document);
++    await act(() => {
++      root.render(<App />);
++    });
++
++    const body = document.body;
++    const primaryChild = document.getElementById('primary-document-child');
++    expect(primaryChild).not.toBe(null);
++    expect(primaryChild.textContent).toBe('primary');
++
++    await act(() => {
++      suspendOnNewMessage();
++    });
++
++    expect(document.getElementById('opaque-fallback')).not.toBe(null);
++    expect(body.contains(primaryChild)).toBe(true);
++    expect(primaryChild.style.display).toBe('none');
++
++    await act(() => {
++      resolveCurrentMessage('primary restored');
++    });
++
++    expect(document.getElementById('opaque-fallback')).toBe(null);
++    expect(document.getElementById('primary-document-child')).toBe(primaryChild);
++    expect(body.contains(primaryChild)).toBe(true);
++    expect(primaryChild.style.display).toBe('');
++    expect(primaryChild.textContent).toBe('primary restored');
++  });
+ });
