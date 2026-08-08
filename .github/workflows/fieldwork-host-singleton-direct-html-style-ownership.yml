@@ -1,0 +1,33 @@
+name: Fieldwork HostSingleton direct HTML style ownership red control
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-red-control:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'research/host-singleton-direct-html-style-ownership'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/host-singleton-direct-html-style-ownership
+      - name: Preflight pressure patch
+        run: git apply --check fieldwork/host-singleton-direct-html-style-ownership.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply direct HTML style ownership controls
+        run: git apply fieldwork/host-singleton-direct-html-style-ownership.patch
+      - name: Focused current-main controls
+        run: >-
+          yarn test --dev ReactDOMSingletonComponents-test --runInBand
+          --testNamePattern="preserves a preexisting external style when acquiring body direct HTML|preserves an external style across body direct HTML updates"
