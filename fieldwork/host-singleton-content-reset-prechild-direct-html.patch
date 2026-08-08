@@ -82,3 +82,23 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitWork.js b/packages/re
          if (flags & Ref) {
            if (!offscreenSubtreeWasHidden && current !== null) {
              safelyDetachRef(current, current.return);
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+--- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
++++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+@@ -4855,13 +4855,9 @@ export function releaseSingletonInstance(
+   // Remove the attributes and property-backed state owned by this Fiber.
+   clearSingletonProperties(instance, type, props);
+ 
+-  // These properties aren't cleared by updateProperties when their next
+-  // value is null. Normally that is handled by replacing/removing the host
+-  // instance, but a singleton cannot be removed.
+-  // TODO: HostSingleton updates do not currently schedule ContentReset when
+-  // dangerouslySetInnerHTML becomes undefined, so an ordinary update can leave
+-  // the previous HTML in place. This only handles the release path.
+-  if (props.dangerouslySetInnerHTML != null) {
++  // Opaque direct content has no Fiber child to remove during deletion.
++  // Clear it only when this Fiber actually supplied direct content.
++  if (props.children == null && shouldSetTextContent(type, props)) {
+     instance.textContent = '';
+   }
+   clearClickListener(instance as any as HTMLElement);
