@@ -1,0 +1,181 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+@@ -9357,6 +9357,177 @@ describe('ReactDOMFizzServer', () => {
+     );
+   });
+ 
++  it('clears opaque body content contributed by a discarded preamble boundary', async () => {
++    let serverRendering = true;
++    function Boom() {
++      if (serverRendering) {
++        throw new Error('Boom!');
++      }
++      return null;
++    }
++
++    function App() {
++      return (
++        <html>
++          <head data-primary="">
++            <meta itemProp="" content="primary" />
++          </head>
++          <Suspense
++            fallback={
++              <body
++                data-fallback=""
++                dangerouslySetInnerHTML={{
++                  __html:
++                    '<div id="opaque-preamble-fallback">fallback body</div>',
++                }}
++              />
++            }>
++            <Boom />
++            <body data-primary="">
++              <div id="primary-after-opaque-preamble">primary body</div>
++            </body>
++          </Suspense>
++        </html>
++      );
++    }
++
++    let content = '';
++    writable.on('data', chunk => (content += chunk));
++
++    let shellReady = false;
++    const errors = [];
++    await act(() => {
++      const {pipe} = renderToPipeableStream(<App />, {
++        onShellReady() {
++          shellReady = true;
++        },
++        onError(e) {
++          errors.push(e);
++        },
++      });
++      pipe(writable);
++    });
++
++    expect(shellReady).toBe(true);
++    expect(content).toMatch(/^<!DOCTYPE html>/);
++    expect(errors).toEqual([new Error('Boom!')]);
++    expect(document.getElementById('opaque-preamble-fallback')).not.toBe(null);
++
++    const body = document.body;
++    const externalStyle = document.createElement('style');
++    externalStyle.setAttribute('data-outside-style', 'preamble-opaque');
++    externalStyle.textContent = '.preamble-opaque { color: maroon; }';
++    body.appendChild(externalStyle);
++
++    serverRendering = false;
++
++    const recoverableErrors = [];
++    const root = ReactDOMClient.hydrateRoot(document, <App />, {
++      onRecoverableError(err) {
++        recoverableErrors.push(err);
++      },
++    });
++    await waitForAll([]);
++
++    expect(recoverableErrors).toEqual([
++      __DEV__
++        ? new Error(
++            'Switched to client rendering because the server rendering errored:\n\nBoom!',
++          )
++        : new Error(
++            'The server could not finish this Suspense boundary, likely due to an error during server rendering. Switched to client rendering.',
++          ),
++    ]);
++    expect(document.getElementById('opaque-preamble-fallback')).toBe(null);
++    expect(document.getElementById('primary-after-opaque-preamble')).not.toBe(
++      null,
++    );
++    expect(body.contains(externalStyle)).toBe(true);
++
++    externalStyle.remove();
++    root.unmount();
++  });
++
++  it(
++    'does not clear the adopted body for an unadopted preamble marker',
++    async () => {
++      let serverRendering = true;
++      function Boom() {
++        if (serverRendering) {
++          throw new Error('Boom!');
++        }
++        return null;
++      }
++
++      function App() {
++        return (
++          <html>
++            <head />
++            <body data-adopted-body="">
++              <div id="stable-adopted-body">stable body</div>
++            </body>
++            <Suspense
++              fallback={
++                <body data-losing-body="">
++                  <div id="losing-body-child">losing body child</div>
++                </body>
++              }>
++              <Boom />
++            </Suspense>
++          </html>
++        );
++      }
++
++      let content = '';
++      writable.on('data', chunk => (content += chunk));
++
++      let shellReady = false;
++      const errors = [];
++      await act(() => {
++        const {pipe} = renderToPipeableStream(<App />, {
++          onShellReady() {
++            shellReady = true;
++          },
++          onError(e) {
++            errors.push(e);
++          },
++        });
++        pipe(writable);
++      });
++
++      expect(shellReady).toBe(true);
++      expect(content).toMatch(/^<!DOCTYPE html>/);
++      expect(errors).toEqual([new Error('Boom!')]);
++      expect(document.body.getAttribute('data-adopted-body')).toBe('');
++      expect(document.body.hasAttribute('data-losing-body')).toBe(false);
++      expect(document.getElementById('losing-body-child')).not.toBe(null);
++
++      serverRendering = false;
++
++      const recoverableErrors = [];
++      const root = ReactDOMClient.hydrateRoot(document, <App />, {
++        onRecoverableError(err) {
++          recoverableErrors.push(err);
++        },
++      });
++      await waitForAll([]);
++
++      expect(recoverableErrors).toEqual([
++        __DEV__
++          ? new Error(
++              'Switched to client rendering because the server rendering errored:\n\nBoom!',
++            )
++          : new Error(
++              'The server could not finish this Suspense boundary, likely due to an error during server rendering. Switched to client rendering.',
++            ),
++      ]);
++      expect(document.body.getAttribute('data-adopted-body')).toBe('');
++      expect(document.getElementById('losing-body-child')).toBe(null);
++
++      root.unmount();
++    },
++  );
++
+   it('Can render a <head> outside of a containing <html>', async () => {
+     function App() {
+       return (

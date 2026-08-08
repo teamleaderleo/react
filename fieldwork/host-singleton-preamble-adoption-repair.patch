@@ -1,0 +1,112 @@
+diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
+--- a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
++++ b/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
+@@ -753,16 +753,27 @@ export function completeResumableState(resumableState: ResumableState): void {
+   resumableState.bootstrapModules = undefined;
+ }
+ 
++type PreambleContributionMarker = {
++  target: Array<Chunk | PrecomputedChunk>,
++  index: number,
++};
++
+ export type PreambleState = {
+   htmlChunks: null | Array<Chunk | PrecomputedChunk>,
+   headChunks: null | Array<Chunk | PrecomputedChunk>,
+   bodyChunks: null | Array<Chunk | PrecomputedChunk>,
++  htmlContributionMarker: null | PreambleContributionMarker,
++  headContributionMarker: null | PreambleContributionMarker,
++  bodyContributionMarker: null | PreambleContributionMarker,
+ };
+ export function createPreambleState(): PreambleState {
+   return {
+     htmlChunks: null,
+     headChunks: null,
+     bodyChunks: null,
++    htmlContributionMarker: null,
++    headContributionMarker: null,
++    bodyContributionMarker: null,
+   };
+ }
+ 
+@@ -3738,6 +3749,7 @@ function pushTitleImpl(
+ const headPreambleContributionChunk = stringToPrecomputedChunk('<!--head-->');
+ const bodyPreambleContributionChunk = stringToPrecomputedChunk('<!--body-->');
+ const htmlPreambleContributionChunk = stringToPrecomputedChunk('<!--html-->');
++const emptyPreambleContributionChunk = stringToPrecomputedChunk('');
+ 
+ function pushStartHead(
+   target: Array<Chunk | PrecomputedChunk>,
+@@ -3758,6 +3770,10 @@ function pushStartHead(
+ 
+     // Insert a marker in the body where the contribution to the head was in case we need to clear it.
+     if (preambleState !== null) {
++      preambleState.headContributionMarker = {
++        target,
++        index: target.length,
++      };
+       target.push(headPreambleContributionChunk);
+     }
+ 
+@@ -3789,6 +3805,10 @@ function pushStartBody(
+ 
+     // Insert a marker in the body where the contribution to the body tag was in case we need to clear it.
+     if (preambleState !== null) {
++      preambleState.bodyContributionMarker = {
++        target,
++        index: target.length,
++      };
+       target.push(bodyPreambleContributionChunk);
+     }
+ 
+@@ -3820,6 +3840,10 @@ function pushStartHtml(
+ 
+     // Insert a marker in the body where the contribution to the head was in case we need to clear it.
+     if (preambleState !== null) {
++      preambleState.htmlContributionMarker = {
++        target,
++        index: target.length,
++      };
+       target.push(htmlPreambleContributionChunk);
+     }
+ 
+@@ -4497,12 +4521,33 @@ export function hoistPreambleState(
+ ) {
+   const rootPreamble = renderState.preamble;
+-  if (rootPreamble.htmlChunks === null && preambleState.htmlChunks) {
+-    rootPreamble.htmlChunks = preambleState.htmlChunks;
++  if (preambleState.htmlChunks) {
++    if (rootPreamble.htmlChunks === null) {
++      rootPreamble.htmlChunks = preambleState.htmlChunks;
++    } else if (rootPreamble.htmlChunks !== preambleState.htmlChunks) {
++      const marker = preambleState.htmlContributionMarker;
++      if (marker !== null) {
++        marker.target[marker.index] = emptyPreambleContributionChunk;
++      }
++    }
+   }
+-  if (rootPreamble.headChunks === null && preambleState.headChunks) {
+-    rootPreamble.headChunks = preambleState.headChunks;
++  if (preambleState.headChunks) {
++    if (rootPreamble.headChunks === null) {
++      rootPreamble.headChunks = preambleState.headChunks;
++    } else if (rootPreamble.headChunks !== preambleState.headChunks) {
++      const marker = preambleState.headContributionMarker;
++      if (marker !== null) {
++        marker.target[marker.index] = emptyPreambleContributionChunk;
++      }
++    }
+   }
+-  if (rootPreamble.bodyChunks === null && preambleState.bodyChunks) {
+-    rootPreamble.bodyChunks = preambleState.bodyChunks;
++  if (preambleState.bodyChunks) {
++    if (rootPreamble.bodyChunks === null) {
++      rootPreamble.bodyChunks = preambleState.bodyChunks;
++    } else if (rootPreamble.bodyChunks !== preambleState.bodyChunks) {
++      const marker = preambleState.bodyContributionMarker;
++      if (marker !== null) {
++        marker.target[marker.index] = emptyPreambleContributionChunk;
++      }
++    }
+   }
+ }

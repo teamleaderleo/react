@@ -1,0 +1,97 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -431,7 +431,6 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.getAttribute('data-external')).toBe('true');
+   });
+ 
+-  // @gate TODO
+   it('preserves imperative attributes when clearing a preamble contribution', async () => {
+     const body = document.body;
+     body.setAttribute('data-react-owned', 'true');
+@@ -445,7 +444,7 @@ describe('ReactDOM HostSingleton', () => {
+       document,
+       <html>
+         <head />
+-        <body data-react-owned="true" suppressHydrationWarning={true}>
++        <body suppressHydrationWarning={true}>
+           <React.Suspense fallback={null}>
+             <span>client</span>
+           </React.Suspense>
+@@ -458,8 +457,76 @@ describe('ReactDOM HostSingleton', () => {
+     await waitForAll([]);
+ 
+     expect(body.textContent).toBe('client');
++    expect(body.hasAttribute('data-react-owned')).toBe(false);
+     expect(body.getAttribute('data-external')).toBe('true');
+   });
++
++  it(
++    'clears only contributed style properties from a preamble contribution',
++    async () => {
++      const body = document.body;
++      // Model a server-owned style contribution.
++      body.style.color = 'red';
++      // This is the shape Fizz emits when a completed Suspense boundary
++      // contributes props to the body singleton.
++      body.innerHTML = '<!--$--><!--body--><div>server</div><!--/$-->';
++      // Model a later imperative addition to the same compound style attribute.
++      body.style.backgroundColor = 'blue';
++
++      ReactDOMClient.hydrateRoot(
++        document,
++        <html>
++          <head />
++          <body suppressHydrationWarning={true}>
++            <React.Suspense fallback={null}>
++              <span>client</span>
++            </React.Suspense>
++          </body>
++        </html>,
++        {
++          onRecoverableError() {},
++        },
++      );
++      await waitForAll([]);
++
++      expect(body.textContent).toBe('client');
++      expect(body.style.color).toBe('');
++      expect(body.style.backgroundColor).toBe('blue');
++    },
++  );
++
++  it(
++    'keeps the current singleton event props after clearing a preamble contribution',
++    async () => {
++      const body = document.body;
++      const onBodyClick = jest.fn();
++      body.setAttribute('data-react-owned', 'true');
++      body.innerHTML = '<!--$--><!--body--><button id="server">server</button><!--/$-->';
++
++      ReactDOMClient.hydrateRoot(
++        document,
++        <html>
++          <head />
++          <body onClick={onBodyClick} suppressHydrationWarning={true}>
++            <React.Suspense fallback={null}>
++              <button id="client">client</button>
++            </React.Suspense>
++          </body>
++        </html>,
++        {
++          onRecoverableError() {},
++        },
++      );
++      await waitForAll([]);
++
++      const clientButton = document.getElementById('client');
++      expect(clientButton).not.toBe(null);
++      clientButton.dispatchEvent(
++        new document.defaultView.MouseEvent('click', {bubbles: true}),
++      );
++      expect(onBodyClick).toHaveBeenCalledTimes(1);
++    },
++  );
+ 
+   it('does not duplicate native listeners when a singleton is reacquired', async () => {
+     const root = ReactDOMClient.createRoot(document);
