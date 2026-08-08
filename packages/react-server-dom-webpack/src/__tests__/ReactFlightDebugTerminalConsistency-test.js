@@ -44,26 +44,27 @@ describe('ReactFlight debug terminal consistency', () => {
     ReactServerDOMClient = require('react-server-dom-webpack/client');
   });
 
-  it('does not let debug initialization reject an early observer and later fulfill the same chunk', async () => {
+  it('keeps pre-resolution and later consumers consistent when debug initialization fails', async () => {
     const {controller, response} = createControlledResponse();
     const earlyOutcome = observeOutcome(response);
 
     // Root debug info first blocks on chunk 1. Chunk 1 then fails to parse,
-    // which leaves the root's debug chunk errored. The root model itself is
-    // valid and arrives last.
+    // which makes the debug chunk error during root initialization. The root
+    // model itself is valid and arrives last.
     controller.enqueue(
       new TextEncoder().encode('0:D"$1"\n1:not-json\n0:"value"\n'),
     );
     controller.close();
 
+    // resolveModelChunk captures pre-resolution listeners before
+    // initializeModelChunk temporarily clears the chunk's listener fields.
+    // A debug-derived triggerErrorOnChunk therefore cannot reject this early
+    // observer. Current source should ultimately fulfill it with the valid
+    // model value despite the transient debug-chunk error state.
     const early = await earlyOutcome;
-    expect(early.status).toBe('rejected');
-    expect(early.error).toBeInstanceOf(SyntaxError);
+    expect(early).toEqual({status: 'fulfilled', value: 'value'});
 
-    // One chunk must have one terminal outcome. Current source is expected to
-    // fail here if initializeModelChunk overwrites the debug-derived rejection
-    // with the successfully parsed model value.
-    await expect(Promise.resolve(response)).rejects.toBe(early.error);
+    await expect(Promise.resolve(response)).resolves.toBe('value');
   });
 
   it('keeps a genuine model parse error terminal for early and late observers', async () => {
