@@ -45,6 +45,24 @@ describe('ReactFlightDOMReply terminal settlement', () => {
     ReactServerDOMClient = require('react-server-dom-webpack/client');
   });
 
+  it('releases the ReadableStream reader lock after successful serialization', async () => {
+    let sourceController;
+    const stream = new ReadableStream({
+      start(controller) {
+        sourceController = controller;
+      },
+    });
+
+    const bodyPromise = ReactServerDOMClient.encodeReply({stream});
+    expect(stream.locked).toBe(true);
+
+    sourceController.enqueue('done');
+    sourceController.close();
+    await bodyPromise;
+
+    expect(stream.locked).toBe(false);
+  });
+
   it('keeps the partial FormData immutable when a Promise settles after abort', async () => {
     let resolvePending;
     const pending = new Promise(resolve => {
