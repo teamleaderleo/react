@@ -16,10 +16,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Preflight contract patches
+      - name: Preflight contract and repair patches
         run: |
           git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
           git apply --check fieldwork/host-singleton-preamble-opaque-content-contract.patch
+          git apply --check fieldwork/host-singleton-preamble-adoption-repair.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -67,8 +68,40 @@ jobs:
             echo "Unexpected pass for current-source opaque preamble ownership control."
             exit 1
           fi
-      - name: Probe unadopted marker reachability
-        continue-on-error: true
+      - name: Require current source to reproduce unadopted-marker authority gap
+        shell: bash
+        run: |
+          set -u
+          pattern="does not clear the adopted body for an unadopted preamble marker"
+          echo "Expecting untouched current source to fail: $pattern"
+          if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
+            echo "Unexpected pass for current-source preamble adoption-authority control."
+            exit 1
+          fi
+      - name: Apply adoption-authority repair experiment
+        run: git apply fieldwork/host-singleton-preamble-adoption-repair.patch
+      - name: Require adoption repair to preserve the adopted singleton
         run: >-
           yarn test --dev ReactDOMFizzServer-test
           --testNamePattern="does not clear the adopted body for an unadopted preamble marker"
+      - name: Require property ownership gaps to remain independent
+        shell: bash
+        run: |
+          set -u
+          expect_still_unfixed() {
+            local suite="$1"
+            local pattern="$2"
+            echo "Expecting adoption-only repair to leave separate gap red: $pattern"
+            if yarn test --dev "$suite" --testNamePattern="$pattern"; then
+              echo "Adoption-only experiment unexpectedly changed separate ownership behavior: $pattern"
+              exit 1
+            fi
+          }
+
+          expect_still_unfixed ReactDOMSingletonComponents-test "preserves imperative attributes when clearing a preamble contribution"
+          expect_still_unfixed ReactDOMSingletonComponents-test "clears only contributed style properties from a preamble contribution"
+          expect_still_unfixed ReactDOMFizzServer-test "clears opaque body content contributed by a discarded preamble boundary"
+      - name: Flow DOM node
+        run: yarn flow dom-node
+      - name: Diff hygiene
+        run: git diff --check
