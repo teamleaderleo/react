@@ -15,6 +15,10 @@ global.ReadableStream =
   require('web-streams-polyfill/ponyfill/es6').ReadableStream;
 global.TextEncoder = require('util').TextEncoder;
 global.TextDecoder = require('util').TextDecoder;
+global.__webpack_require__ = function () {};
+global.__webpack_require__.u = id => id;
+global.__webpack_chunk_load__ = () => Promise.resolve();
+global.__webpack_get_script_filename__ = id => id;
 
 let ReactServerDOMClient;
 
