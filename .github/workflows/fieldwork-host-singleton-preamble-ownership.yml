@@ -1,0 +1,47 @@
+name: Fieldwork HostSingleton preamble ownership
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  current-source-contract-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight contract patch
+        run: git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply contract tests only
+        run: git apply fieldwork/host-singleton-preamble-ownership-contract.patch
+      - name: Validate singleton hydration harness
+        run: >-
+          yarn test --dev ReactDOMSingletonComponents-test
+          --testNamePattern="does not release or reacquire singletons when double invoking effects during hydration"
+      - name: Validate changed test file
+        run: yarn linc
+      - name: Require current source to reproduce preamble ownership gaps
+        shell: bash
+        run: |
+          set -u
+          expect_current_failure() {
+            local pattern="$1"
+            echo "Expecting untouched current source to fail: $pattern"
+            if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
+              echo "Unexpected pass for current-source preamble ownership control: $pattern"
+              exit 1
+            fi
+          }
+
+          expect_current_failure "preserves imperative attributes when clearing a preamble contribution"
+          expect_current_failure "clears only contributed style properties from a preamble contribution"
