@@ -13,7 +13,6 @@ concurrency:
 
 env:
   TZ: /usr/share/zoneinfo/America/Los_Angeles
-  # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#cache-segment-restore-timeout
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
 
 jobs:
@@ -36,7 +35,13 @@ jobs:
         run: rm -rf build
       - run: yarn install --frozen-lockfile
         if: steps.node_modules.outputs.cache-hit != 'true'
-      - run: yarn prettier-check
+      - name: Format repository
+        run: yarn prettier-all
+      - name: Upload formatted image-wait test
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-view-transition-image-wait-test
+          path: packages/react-dom/src/__tests__/ReactDOMViewTransitionImageWaitCleanup-test.js
 
   eslint:
     name: Run eslint
