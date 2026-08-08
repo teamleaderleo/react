@@ -8,6 +8,7 @@
  */
 
 import Agent from './agent';
+import reportGlobalError from 'shared/reportGlobalError';
 
 import type {DevToolsHook, RendererID, RendererInterface} from './types';
 
@@ -74,11 +75,30 @@ export function initBackend(
   hook.reactDevtoolsAgent = agent;
 
   const onAgentShutdown = () => {
-    subs.forEach(fn => fn());
+    let didError = false;
+    let firstError: mixed = null;
+    const runCleanup = (cleanup: () => void) => {
+      try {
+        cleanup();
+      } catch (error) {
+        if (!didError) {
+          didError = true;
+          firstError = error;
+        } else {
+          reportGlobalError(error);
+        }
+      }
+    };
+
+    subs.forEach(runCleanup);
     hook.rendererInterfaces.forEach(rendererInterface => {
-      rendererInterface.cleanup();
+      runCleanup(() => rendererInterface.cleanup());
     });
     hook.reactDevtoolsAgent = null;
+
+    if (didError) {
+      throw firstError;
+    }
   };
 
   // Agent's event listeners are cleaned up by Agent in `shutdown` implementation.

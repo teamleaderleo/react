@@ -986,10 +986,12 @@ export default class Agent extends EventEmitter<{
 
   shutdown: () => void = () => {
     // Clean up the overlay if visible, and associated events.
-    this.emit('shutdown');
-
-    this._bridge.removeAllListeners();
-    this.removeAllListeners();
+    try {
+      this.emit('shutdown');
+    } finally {
+      this._bridge.removeAllListeners();
+      this.removeAllListeners();
+    }
   };
 
   startProfiling: ({recordChangeDescriptions: boolean}) => void = ({

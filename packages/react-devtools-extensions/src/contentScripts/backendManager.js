@@ -13,6 +13,7 @@ import type {
 } from 'react-devtools-shared/src/backend/types';
 import {hasAssignedBackend} from 'react-devtools-shared/src/backend/utils';
 import {COMPACT_VERSION_NAME} from 'react-devtools-extensions/src/utils';
+import reportGlobalError from 'shared/reportGlobalError';
 import {getIsReloadAndProfileSupported} from 'react-devtools-shared/src/utils';
 import {
   getIfReloadedAndProfiling,
@@ -37,21 +38,46 @@ function finishBackendManagerShutdown() {
 
   const cleanup = cleanupBackendManagerSetup;
   cleanupBackendManagerSetup = null;
-  cleanup?.();
-
-  delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
+  try {
+    cleanup?.();
+  } finally {
+    delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
+  }
 }
 
 function handlePageHide() {
   // A document in the back-forward cache keeps its JavaScript heap but loses
   // its extension messaging port. Shut down locally while the document is
   // still active so a restored page can attach a new Agent and replay its tree.
+  let didError = false;
+  let firstError: mixed = null;
+  const captureError = (error: mixed) => {
+    if (!didError) {
+      didError = true;
+      firstError = error;
+    } else {
+      reportGlobalError(error);
+    }
+  };
+
   // eslint-disable-next-line no-for-of-loops/no-for-of-loops
   for (const shutdownBackend of activeBackendsShutdownCallbacks) {
-    shutdownBackend();
+    try {
+      shutdownBackend();
+    } catch (error) {
+      captureError(error);
+    }
   }
 
-  finishBackendManagerShutdown();
+  try {
+    finishBackendManagerShutdown();
+  } catch (error) {
+    captureError(error);
+  }
+
+  if (didError) {
+    throw firstError;
+  }
 }
 
 function welcome(event: $FlowFixMe) {
@@ -128,13 +154,36 @@ function setup(hook: ?DevToolsHook) {
     }
     didCleanup = true;
 
-    unsubscribeRendererListener();
-    unsubscribeBackendInstallationListener();
-    unsubscribeShutdownListener?.();
+    const shutdownListener = unsubscribeShutdownListener;
     unsubscribeShutdownListener = null;
-
     if (cleanupBackendManagerSetup === cleanup) {
       cleanupBackendManagerSetup = null;
+    }
+
+    let didError = false;
+    let firstError: mixed = null;
+    const runCleanup = (cleanupFn: null | (() => void)) => {
+      if (cleanupFn === null) {
+        return;
+      }
+      try {
+        cleanupFn();
+      } catch (error) {
+        if (!didError) {
+          didError = true;
+          firstError = error;
+        } else {
+          reportGlobalError(error);
+        }
+      }
+    };
+
+    runCleanup(unsubscribeRendererListener);
+    runCleanup(unsubscribeBackendInstallationListener);
+    runCleanup(shutdownListener);
+
+    if (didError) {
+      throw firstError;
     }
   };
 
@@ -222,10 +271,33 @@ function activateBackend(version: string, hook: DevToolsHook) {
     shouldSendMessages = false;
     activeBackendsShutdownCallbacks.delete(shutdownBackend);
 
-    hook.emit('shutdown');
+    let didError = false;
+    let firstError: mixed = null;
+    const captureError = (error: mixed) => {
+      if (!didError) {
+        didError = true;
+        firstError = error;
+      } else {
+        reportGlobalError(error);
+      }
+    };
+
+    try {
+      hook.emit('shutdown');
+    } catch (error) {
+      captureError(error);
+    }
 
     if (activeBackendsShutdownCallbacks.size === 0) {
-      finishBackendManagerShutdown();
+      try {
+        finishBackendManagerShutdown();
+      } catch (error) {
+        captureError(error);
+      }
+    }
+
+    if (didError) {
+      throw firstError;
     }
   });
 
