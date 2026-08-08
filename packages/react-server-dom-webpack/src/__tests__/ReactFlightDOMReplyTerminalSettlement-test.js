@@ -116,7 +116,10 @@ describe('ReactFlightDOMReply terminal settlement', () => {
     try {
       sourceController.enqueue('late chunk');
       sourceController.close();
-    } catch (error) {}
+    } catch (error) {
+      // Cancellation may already have closed the controller. Either outcome is
+      // acceptable; the assertion below is about the published reply body.
+    }
     await flushMicrotasks();
 
     expect(snapshotFormData(body)).toEqual(before);
