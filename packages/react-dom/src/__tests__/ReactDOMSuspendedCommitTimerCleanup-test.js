@@ -74,6 +74,31 @@ describe('suspended commit timer cleanup', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  it('clears the stylesheet timeout owner when the image timeout resumes', () => {
+    const {image} = createPendingImage();
+    const state = startSuspendingCommit();
+
+    suspendInstance(state, image, 'img', {});
+    const subscribe = waitForCommitToBeReady(state, 0);
+    expect(typeof subscribe).toBe('function');
+
+    let timersAtCommit = -1;
+    const commit = jest.fn(() => {
+      timersAtCommit = jest.getTimerCount();
+    });
+    const cancel = subscribe(commit);
+
+    expect(jest.getTimerCount()).toBe(2);
+    jest.advanceTimersByTime(800);
+
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(timersAtCommit).toBe(0);
+    expect(jest.getTimerCount()).toBe(0);
+
+    cancel();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('keeps explicit cancellation cleanup idempotent', () => {
     const {image} = createPendingImage();
     const state = startSuspendingCommit();
