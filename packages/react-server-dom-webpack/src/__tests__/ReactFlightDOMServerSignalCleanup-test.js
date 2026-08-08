@@ -159,4 +159,27 @@ describe('ReactFlightDOMServer AbortSignal cleanup', () => {
     expect(active.size).toBe(0);
     resolvePending('late');
   });
+
+  it('keeps prerender cancellation authority until the prelude request closes', async () => {
+    const controller = new AbortController();
+    const active = trackAbortListeners(controller.signal);
+
+    const result = await serverAct(() =>
+      ReactServerDOMServer.prerender(
+        {value: 'done'},
+        webpackMap,
+        {signal: controller.signal},
+      ),
+    );
+
+    // The prerender result is ready before its prelude has necessarily flowed.
+    // The external signal must therefore remain authoritative until the
+    // underlying Flight request reaches its actual cleanup boundary.
+    expect(active.size).toBe(1);
+
+    await consume(result.prelude);
+    await serverAct(async () => {});
+
+    expect(active.size).toBe(0);
+  });
 });
