@@ -52,7 +52,7 @@ jobs:
       - name: Run focused head pressure test
         run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="preserves a stable hoistable when head leaves direct HTML"
 
-  hidden-placement-pressure:
+  hidden-mutation-pressure:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -70,9 +70,9 @@ jobs:
         run: |
           git apply fieldwork/host-singleton-offscreen-ownership-repair.patch
           git apply fieldwork/host-singleton-offscreen-ownership.patch
-      - name: Preflight and apply hidden Placement pressure test
+      - name: Preflight and apply hidden mutation pressure tests
         run: |
           git apply --check fieldwork/host-singleton-second-review-hidden-placement.patch
           git apply fieldwork/host-singleton-second-review-hidden-placement.patch
-      - name: Run focused hidden Placement pressure test
-        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="does not place new managed children from an already hidden singleton owner"
+      - name: Run focused hidden mutation pressure tests
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="already hidden singleton owner|hidden deletion"
