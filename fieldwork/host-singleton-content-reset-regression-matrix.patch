@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,137 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,138 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -132,6 +132,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    await waitForAll([]);
 +
 +    expect(body.contains(externalLink)).toBe(true);
++    expect(body.querySelector('div').textContent).toBe('managed child');
 +  });
 +
    // @gate TODO
