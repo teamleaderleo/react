@@ -20,6 +20,26 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+      - name: Shim direct DOM host config import
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-dom/src/__tests__/ReactDOMSuspendedCommitTimerCleanup-test.js')
+          text = path.read_text()
+          anchor = "'use strict';\n"
+          shim = """
+
+jest.mock('react-reconciler/src/ReactFiberHostContext', () => ({
+  getCurrentRootHostContainer: () => document,
+}));
+"""
+          if shim.strip() not in text:
+              if text.count(anchor) != 1:
+                  raise SystemExit('expected one use strict anchor')
+              text = text.replace(anchor, anchor + shim, 1)
+              path.write_text(text)
+          PY
       - name: Run focused timer ownership controls
         run: yarn test --dev ReactDOMSuspendedCommitTimerCleanup-test --runInBand
       - name: DOM Flow
