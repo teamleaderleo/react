@@ -10,6 +10,27 @@ permissions:
   contents: read
 
 jobs:
+  body-external-style-pressure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight refined direct-content candidate and body pressure test
+        run: |
+          git apply --check fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply --check fieldwork/host-singleton-second-review-body-external-style.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply candidate and body pressure test
+        run: |
+          git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply fieldwork/host-singleton-second-review-body-external-style.patch
+      - name: Run focused body pressure tests
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="preserves an external style when"
+
   head-hoistable-pressure:
     runs-on: ubuntu-latest
     steps:
