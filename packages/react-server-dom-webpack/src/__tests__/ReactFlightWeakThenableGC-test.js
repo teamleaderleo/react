@@ -42,15 +42,26 @@ async function consume(stream) {
   }
 }
 
-async function collectUntil(gc, ref, shouldCollect) {
+async function survivesRepeatedGC(gc, ref) {
   for (let i = 0; i < 40; i++) {
     // Give objects dereferenced during the previous check a full turn to lose
     // their temporary WeakRef keep-alive guarantee before the next collection.
     await new Promise(resolve => setImmediate(resolve));
     gc();
     await new Promise(resolve => setImmediate(resolve));
-    const value = ref.deref();
-    if (shouldCollect ? value === undefined : value !== undefined) {
+    if (ref.deref() === undefined) {
+      return false;
+    }
+  }
+  return true;
+}
+
+async function isEventuallyCollected(gc, ref) {
+  for (let i = 0; i < 40; i++) {
+    await new Promise(resolve => setImmediate(resolve));
+    gc();
+    await new Promise(resolve => setImmediate(resolve));
+    if (ref.deref() === undefined) {
       return true;
     }
   }
@@ -92,13 +103,14 @@ describe('ReactFlight pending_weak request retention', () => {
 
     // Current source leaves fulfillment/rejection callbacks registered on the
     // externally retained tracker. Those callbacks close over the completed
-    // Request, which in turn owns the unique manifest.
-    expect(await collectUntil(gc, manifestRef, false)).toBe(true);
+    // Request, which in turn owns the unique manifest. Require this reference
+    // to survive the full repeated-GC window rather than merely one collection.
+    expect(await survivesRepeatedGC(gc, manifestRef)).toBe(true);
     expect(listeners.length).toBeGreaterThan(0);
 
     // Clearing only the tracker callbacks removes the suspected retaining edge.
     // This is the positive control for the proposed request-lifetime cleanup.
     listeners.length = 0;
-    expect(await collectUntil(gc, manifestRef, true)).toBe(true);
+    expect(await isEventuallyCollected(gc, manifestRef)).toBe(true);
   });
 });
