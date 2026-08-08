@@ -2,22 +2,19 @@ name: Fieldwork Fragment document dispatch repair verifier
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   verify-repair:
-    if: >-
-      github.repository == 'teamleaderleo/react' &&
-      github.event.pull_request.head.ref == 'verify/fragment-document-dispatch-repair'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: verify/fragment-document-dispatch-repair
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
@@ -53,12 +50,10 @@ jobs:
           ReactDOMFragmentRefsDocumentDispatch-test
           ReactDOMFragmentRefs-test
           --runInBand
+      - name: Flow check
+        run: yarn flow dom-browser
       - name: Diff hygiene
         run: git diff --check
-      - name: Prepare formatter base ref
-        run: |
-          git fetch origin main:refs/remotes/origin/main
-          git branch -f main origin/main
       - name: Format check
         run: >-
           yarn prettier
