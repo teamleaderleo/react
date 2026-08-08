@@ -1,0 +1,59 @@
+name: Fieldwork HostSingleton body opaque placement experiment
+
+on:
+  pull_request:
+    branches:
+      - research/host-singleton-opaque-range-contract
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  client-placement-experiment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight experiment and contract patches
+        run: |
+          git apply --check fieldwork/host-singleton-body-opaque-placement-experiment.patch
+          git apply --check fieldwork/host-singleton-opaque-range-contract.patch
+          git apply --check fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
+          git apply --check fieldwork/host-singleton-body-scope-sibling-contract.patch
+          git apply --check fieldwork/host-singleton-opaque-parser-compat.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply experiment and contract tests
+        run: |
+          git apply fieldwork/host-singleton-body-opaque-placement-experiment.patch
+          git apply fieldwork/host-singleton-opaque-range-contract.patch
+          git apply fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
+          git apply fieldwork/host-singleton-body-scope-sibling-contract.patch
+          git apply fieldwork/host-singleton-opaque-parser-compat.patch
+      - name: Run singleton client ownership controls
+        run: >-
+          yarn test --dev ReactDOMSingletonComponents-test
+          --testNamePattern="updates dangerouslySetInnerHTML on a singleton|keeps scripts inert when body uses dangerouslySetInnerHTML|preserves outside body style during initial direct HTML acquisition|preserves outside body style during direct HTML update|preserves outside body style when managed children become direct HTML|keeps outside body styles around the same slot when direct HTML becomes managed children|preserves later outside body style when releasing empty direct HTML|removes opaque owned style while preserving outside style"
+      - name: Run document placement and Suspense controls
+        run: >-
+          yarn test --dev ReactDOM-test
+          --testNamePattern="preserves primary document children across an opaque body fallback|keeps body direct HTML ordered between root body-scope siblings|keeps managed body children ordered when the body slot becomes opaque"
+      - name: Run Trusted Types compatibility lock
+        run: >-
+          yarn test --dev trustedTypes-test.internal
+          --testNamePattern="should not stringify trusted values for body singleton direct HTML"
+      - name: Require hydration provenance to remain unresolved
+        shell: bash
+        run: |
+          set -u
+          pattern="preserves outside body style added before hydrating opaque HTML"
+          if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
+            echo "Hydration unexpectedly passed; inspect provenance before accepting this experiment."
+            exit 1
+          fi
+      - name: Lint experiment
+        run: yarn linc
