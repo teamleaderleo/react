@@ -36,6 +36,8 @@ jobs:
         run: >-
           yarn test --dev ReactDOMFizzServer-test
           --testNamePattern="Can render a fallback <body> alongside a non-fallback head"
+      - name: Fetch base for changed-file lint
+        run: git fetch origin main:main
       - name: Validate changed test files
         run: yarn linc
       - name: Require current source to reproduce preamble property gaps
