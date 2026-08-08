@@ -1,0 +1,67 @@
+name: Fieldwork Fizz root body DSIH order
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  root-body-dsih-order:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight source and contract patches
+        run: |
+          git apply --check fieldwork/fizz-root-body-dsih-order.patch
+          git apply --check fieldwork/fizz-root-body-dsih-order-contract.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply ordering contract only
+        run: git apply fieldwork/fizz-root-body-dsih-order-contract.patch
+      - name: Validate managed body ordering and text boundaries on current source
+        run: >-
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="keeps managed body children in the same body scope order|keeps managed body text isolated in the same body scope"
+      - name: Require current source to reproduce direct-HTML order and text gaps
+        shell: bash
+        run: |
+          set -u
+          expect_current_failure() {
+            local pattern="$1"
+            if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
+              echo "Current source unexpectedly passed: $pattern"
+              exit 1
+            fi
+          }
+
+          expect_current_failure "keeps root body direct HTML in body scope order"
+          expect_current_failure "keeps root body direct HTML text isolated in body scope"
+      - name: Apply root body DSIH ordering experiment
+        run: git apply fieldwork/fizz-root-body-dsih-order.patch
+      - name: Require element ordering to pass with experiment
+        run: >-
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="keeps root body direct HTML in body scope order|keeps managed body children in the same body scope order|keeps managed body text isolated in the same body scope"
+      - name: Require opaque text-boundary problem to remain unresolved
+        shell: bash
+        run: |
+          set -u
+          pattern="keeps root body direct HTML text isolated in body scope"
+          if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
+            echo "Opaque text boundaries unexpectedly passed; inspect before accepting this partial split."
+            exit 1
+          fi
+      - name: Preserve matching root body DSIH hydration behavior
+        run: >-
+          yarn test --dev ReactDOMSingletonComponents-test
+          --testNamePattern="does not release or reacquire singletons when double invoking effects during hydration"
+      - name: Lint experiment
+        run: yarn linc

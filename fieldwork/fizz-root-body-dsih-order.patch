@@ -1,0 +1,31 @@
+diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
+--- a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
++++ b/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
+@@ -3761,6 +3761,7 @@ function pushStartBody(
+       props,
+       'body',
+       formatContext,
++      preambleState === null ? target : undefined,
+     );
+   } else {
+     // This <head> is deep and is likely just an error. we emit it inline though.
+@@ -3964,6 +3965,7 @@ function pushStartSingletonElement(
+   props: Object,
+   tag: string,
+   formatContext: FormatContext,
++  innerHTMLTarget?: Array<Chunk | PrecomputedChunk>,
+ ): ReactNodeList {
+   target.push(startChunkForTag(tag));
+ 
+@@ -3990,6 +3992,10 @@ function pushStartSingletonElement(
+   pushViewTransitionAttributes(target, formatContext);
+ 
+   target.push(endOfStartTag);
+-  pushInnerHTML(target, innerHTML, children);
++  pushInnerHTML(
++    innerHTMLTarget === undefined ? target : innerHTMLTarget,
++    innerHTML,
++    children,
++  );
+   return children;
+ }
