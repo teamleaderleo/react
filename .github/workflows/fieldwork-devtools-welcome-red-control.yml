@@ -23,5 +23,7 @@ jobs:
           node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --frozen-lockfile
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
       - name: Focused DevTools welcome boundary
-        run: yarn test --dev backendManagerWelcome-test --runInBand
+        run: yarn test-build-devtools backendManagerWelcome --runInBand
