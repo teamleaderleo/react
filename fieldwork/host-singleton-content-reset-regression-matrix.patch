@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,138 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,170 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -134,6 +134,38 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    expect(body.contains(externalLink)).toBe(true);
 +    expect(body.querySelector('div').textContent).toBe('managed child');
 +  });
++
++  it(
++    'preserves external children when releasing an unset dangerous HTML prop',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++      const undefinedHTML = undefined;
++
++      root.render(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: undefinedHTML}} />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalLink = document.createElement('link');
++      externalLink.rel = 'stylesheet';
++      externalLink.href = 'external.css';
++      body.appendChild(externalLink);
++
++      root.render(
++        <html>
++          <head />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.body).toBe(body);
++      expect(body.contains(externalLink)).toBe(true);
++    },
++  );
 +
    // @gate TODO
    it('preserves imperative attributes when acquiring a singleton', async () => {
