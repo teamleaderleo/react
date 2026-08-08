@@ -1,0 +1,10 @@
+diff --git a/packages/react-reconciler/src/ReactFiberConfigWithNoSingletons.js b/packages/react-reconciler/src/ReactFiberConfigWithNoSingletons.js
+--- a/packages/react-reconciler/src/ReactFiberConfigWithNoSingletons.js
++++ b/packages/react-reconciler/src/ReactFiberConfigWithNoSingletons.js
+@@ -27,3 +27,7 @@ export const releaseSingletonInstance = shim;
+ export const isHostSingletonType = shim;
+ export const isSingletonScope = shim;
++export const isSingletonOpaqueContent = shim;
++export const getSingletonOpaqueFirstNode = shim;
++export const commitSingletonOpaquePlacement = shim;
++export const clearSingletonOpaqueContent = shim;
