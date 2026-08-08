@@ -149,4 +149,36 @@ describe('Bridge', () => {
       'Cannot shut down through a Bridge that has been shut down.',
     );
   });
+
+  // @reactVersion >=16.0
+  it('does not run a second shutdown cycle from a shutdown listener', () => {
+    const wallUnlisten = jest.fn();
+    const wall = {
+      listen: jest.fn(() => wallUnlisten),
+      send: jest.fn(),
+    };
+    const bridge = new Bridge(wall);
+    let shutdownListenerCalls = 0;
+    let nestedShutdownError = null;
+
+    bridge.addListener('shutdown', () => {
+      shutdownListenerCalls++;
+      if (shutdownListenerCalls === 1) {
+        try {
+          bridge.shutdown();
+        } catch (error) {
+          nestedShutdownError = error;
+        }
+      }
+    });
+
+    bridge.shutdown();
+
+    expect(shutdownListenerCalls).toBe(1);
+    expect(nestedShutdownError).not.toBe(null);
+    expect(nestedShutdownError.message).toContain('shut down');
+    expect(wallUnlisten).toHaveBeenCalledTimes(1);
+    expect(wall.send).toHaveBeenCalledTimes(1);
+    expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
+  });
 });
