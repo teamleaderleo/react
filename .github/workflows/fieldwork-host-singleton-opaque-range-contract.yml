@@ -14,8 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight contract patch
-        run: git apply --check fieldwork/host-singleton-opaque-range-contract.patch
+      - name: Preflight contract patches
+        run: |
+          git apply --check fieldwork/host-singleton-opaque-range-contract.patch
+          git apply --check fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -23,14 +25,20 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
       - name: Apply contract tests only
-        run: git apply fieldwork/host-singleton-opaque-range-contract.patch
-      - name: Validate harness with existing passing singleton behavior
+        run: |
+          git apply fieldwork/host-singleton-opaque-range-contract.patch
+          git apply fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
+      - name: Validate singleton harness with existing passing behavior
         run: >-
           yarn test --dev ReactDOMSingletonComponents-test
           --testNamePattern="updates dangerouslySetInnerHTML on a singleton"
-      - name: Validate changed test file
+      - name: Validate Suspense document harness with existing passing behavior
+        run: >-
+          yarn test --dev ReactDOM-test
+          --testNamePattern="can render a Suspense boundary above the <html> tag"
+      - name: Validate changed test files
         run: yarn linc
-      - name: Require current source to reproduce each ownership gap
+      - name: Require current source to reproduce direct-content ownership gaps
         shell: bash
         run: |
           set -u
@@ -50,3 +58,13 @@ jobs:
           expect_current_failure "preserves later outside body style when releasing empty direct HTML"
           expect_current_failure "removes opaque owned style while preserving outside style"
           expect_current_failure "preserves outside body style added before hydrating opaque HTML"
+      - name: Require current source to reproduce opaque Suspense fallback gap
+        shell: bash
+        run: |
+          set -u
+          pattern="preserves primary document children across an opaque body fallback"
+          echo "Expecting untouched current source to fail: $pattern"
+          if yarn test --dev ReactDOM-test --testNamePattern="$pattern"; then
+            echo "Unexpected pass for current-source Suspense ownership control: $pattern"
+            exit 1
+          fi
