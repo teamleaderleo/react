@@ -1,0 +1,66 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+@@ -9357,4 +9357,62 @@ describe('ReactDOMFizzServer', () => {
+   });
+ 
++  it(
++    'keeps body event props after a real preamble boundary client takeover',
++    async () => {
++      let serverRendering = true;
++      const onBodyClick = jest.fn();
++
++      function Boom() {
++        if (serverRendering) {
++          throw new Error('Boom!');
++        }
++        return null;
++      }
++
++      function App() {
++        return (
++          <html>
++            <head />
++            <Suspense
++              fallback={
++                <body data-fallback="">
++                  <div>fallback body</div>
++                </body>
++              }>
++              <Boom />
++              <body onClick={onBodyClick}>
++                <button id="client-body-event">client body</button>
++              </body>
++            </Suspense>
++          </html>
++        );
++      }
++
++      await act(() => {
++        const {pipe} = renderToPipeableStream(<App />, {
++          onError() {},
++        });
++        pipe(writable);
++      });
++
++      expect(document.body.getAttribute('data-fallback')).toBe('');
++
++      serverRendering = false;
++      const root = ReactDOMClient.hydrateRoot(document, <App />, {
++        onRecoverableError() {},
++      });
++      await waitForAll([]);
++
++      const button = document.getElementById('client-body-event');
++      expect(button).not.toBe(null);
++      button.dispatchEvent(
++        new document.defaultView.MouseEvent('click', {bubbles: true}),
++      );
++      expect(onBodyClick).toHaveBeenCalledTimes(1);
++
++      root.unmount();
++    },
++  );
++
+   it('Can render a <head> outside of a containing <html>', async () => {
+     function App() {
