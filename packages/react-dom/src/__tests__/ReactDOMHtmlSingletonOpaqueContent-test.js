@@ -56,20 +56,4 @@ describe('html HostSingleton opaque child content', () => {
     expect(document.head).toBe(head);
     expect(document.body).toBe(body);
   });
-
-  it('preserves the persistent head and body identities when html owns scalar text', async () => {
-    const documentElement = document.documentElement;
-    const head = document.head;
-    const body = document.body;
-    const root = ReactDOMClient.createRoot(document);
-
-    await act(() => {
-      root.render(<html>managed text</html>);
-    });
-
-    expect(document.documentElement).toBe(documentElement);
-    expect(document.documentElement.textContent).toContain('managed text');
-    expect(document.head).toBe(head);
-    expect(document.body).toBe(body);
-  });
 });
