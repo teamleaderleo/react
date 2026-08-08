@@ -1,0 +1,66 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
+@@ -9454,5 +9454,62 @@ describe('ReactDOMFizzServer', () => {
+     externalStyle.remove();
+     root.unmount();
+   });
+ 
++  it(
++    'does not treat opaque body comments as preamble contribution markers',
++    async () => {
++      let serverRendering = true;
++      function Boom() {
++        if (serverRendering) {
++          throw new Error('Boom!');
++        }
++        return null;
++      }
++
++      function App() {
++        return (
++          <html>
++            <head data-stable-head="">
++              <meta itemProp="" content="stable" />
++            </head>
++            <Suspense
++              fallback={
++                <body
++                  dangerouslySetInnerHTML={{
++                    __html:
++                      '<!--head--><div id="opaque-comment-fallback">fallback</div>',
++                  }}
++                />
++              }>
++              <Boom />
++              <body data-primary="">
++                <div id="primary-after-opaque-comment">primary</div>
++              </body>
++            </Suspense>
++          </html>
++        );
++      }
++
++      await act(() => {
++        const {pipe} = renderToPipeableStream(<App />, {
++          onError() {},
++        });
++        pipe(writable);
++      });
++
++      expect(document.head.getAttribute('data-stable-head')).toBe('');
++
++      serverRendering = false;
++      ReactDOMClient.hydrateRoot(document, <App />, {
++        onRecoverableError() {},
++      });
++      await waitForAll([]);
++
++      expect(document.head.getAttribute('data-stable-head')).toBe('');
++      expect(
++        document.getElementById('primary-after-opaque-comment'),
++      ).not.toBe(null);
++    },
++  );
++
+   it('Can render a <head> outside of a containing <html>', async () => {
