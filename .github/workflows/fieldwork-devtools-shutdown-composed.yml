@@ -1,0 +1,103 @@
+name: Fieldwork DevTools composed shutdown verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-composed-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/devtools-shutdown-composed'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/devtools-shutdown-composed
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply all three verified shutdown repairs
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          # Backend/Agent cleanup fanout.
+          path = Path('packages/react-devtools-shared/src/backend/index.js')
+          text = path.read_text()
+          anchor = "import Agent from './agent';\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('unexpected backend Agent import shape')
+          text = text.replace(
+              anchor,
+              anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+          old = """  const onAgentShutdown = () => {\n    subs.forEach(fn => fn());\n    hook.rendererInterfaces.forEach(rendererInterface => {\n      rendererInterface.cleanup();\n    });\n    hook.reactDevtoolsAgent = null;\n  };\n"""
+          new = """  const onAgentShutdown = () => {\n    let didError = false;\n    let firstError: mixed = null;\n    const runCleanup = (cleanup: () => void) => {\n      try {\n        cleanup();\n      } catch (error) {\n        if (!didError) {\n          didError = true;\n          firstError = error;\n        } else {\n          reportGlobalError(error);\n        }\n      }\n    };\n\n    subs.forEach(runCleanup);\n    hook.rendererInterfaces.forEach(rendererInterface => {\n      runCleanup(() => rendererInterface.cleanup());\n    });\n    hook.reactDevtoolsAgent = null;\n\n    if (didError) {\n      throw firstError;\n    }\n  };\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected onAgentShutdown shape')
+          path.write_text(text.replace(old, new, 1))
+
+          # Bridge terminalization.
+          path = Path('packages/react-devtools-shared/src/bridge.js')
+          text = path.read_text()
+          anchor = "import EventEmitter from './events';\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('unexpected EventEmitter import shape')
+          text = text.replace(
+              anchor,
+              anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+          old = """  shutdown(): void {\n    this._assertNotShutdown('shut down');\n\n    // Queue the shutdown outgoing message for subscribers.\n    this.emit('shutdown');\n    this.send('shutdown');\n\n    // Mark this bridge as destroyed, i.e. disable its public API.\n    this._isShutdown = true;\n\n    // Unsubscribe this bridge incoming message listeners to be sure, and so they don't have to do that.\n    this.removeAllListeners();\n\n    // Stop accepting and emitting incoming messages from the wall.\n    const wallUnlisten = this._wallUnlisten;\n    this._wallUnlisten = null;\n    try {\n      if (wallUnlisten !== null) {\n        wallUnlisten();\n      }\n    } finally {\n      // Synchronously flush all queued outgoing messages.\n      // At this step the subscribers' code may run in this call stack.\n      do {\n        this._flush();\n      } while (this._messageQueue.length);\n    }\n  }\n"""
+          new = """  shutdown(): void {\n    this._assertNotShutdown('shut down');\n\n    let didError = false;\n    let firstError: mixed = null;\n    const captureError = (error: mixed) => {\n      if (!didError) {\n        didError = true;\n        firstError = error;\n      } else {\n        reportGlobalError(error);\n      }\n    };\n\n    try {\n      this.emit('shutdown');\n    } catch (error) {\n      captureError(error);\n    }\n    try {\n      this.send('shutdown');\n    } catch (error) {\n      captureError(error);\n    }\n\n    this._isShutdown = true;\n    this.removeAllListeners();\n\n    const wallUnlisten = this._wallUnlisten;\n    this._wallUnlisten = null;\n    if (wallUnlisten !== null) {\n      try {\n        wallUnlisten();\n      } catch (error) {\n        captureError(error);\n      }\n    }\n\n    try {\n      do {\n        this._flush();\n      } while (this._messageQueue.length);\n    } catch (error) {\n      captureError(error);\n    }\n\n    if (didError) {\n      throw firstError;\n    }\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected Bridge shutdown shape')
+          path.write_text(text.replace(old, new, 1))
+
+          # Backend-manager pagehide fanout.
+          path = Path('packages/react-devtools-extensions/src/contentScripts/backendManager.js')
+          text = path.read_text()
+          anchor = "import {COMPACT_VERSION_NAME} from 'react-devtools-extensions/src/utils';\n"
+          if text.count(anchor) != 1:
+              raise SystemExit('unexpected backendManager import shape')
+          text = text.replace(
+              anchor,
+              anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+          old = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    shutdownBackend();\n  }\n\n  finishBackendManagerShutdown();\n}\n"""
+          new = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  let didError = false;\n  let firstError: mixed = null;\n  const captureError = (error: mixed) => {\n    if (!didError) {\n      didError = true;\n      firstError = error;\n    } else {\n      reportGlobalError(error);\n    }\n  };\n\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    try {\n      shutdownBackend();\n    } catch (error) {\n      captureError(error);\n    }\n  }\n\n  try {\n    finishBackendManagerShutdown();\n  } catch (error) {\n    captureError(error);\n  }\n\n  if (didError) {\n    throw firstError;\n  }\n}\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected pagehide handler shape')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Run composed shutdown integration control
+        run: yarn test-build-devtools backendManagerShutdownIntegration --runInBand
+      - name: Keep existing Bridge shutdown coverage green
+        run: yarn test-build-devtools bridge-test --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-devtools-shared/src/backend/index.js
+          packages/react-devtools-shared/src/bridge.js
+          packages/react-devtools-extensions/src/contentScripts/backendManager.js
+          packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerShutdownIntegration.test.js
+          --check
