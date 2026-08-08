@@ -1,0 +1,31 @@
+name: Fieldwork Fragment singleton shared observer verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [repair/fragment-singleton-observer-ownership]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-verifier:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/fragment-singleton-shared-observer'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/fragment-singleton-shared-observer
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Shared observer ownership pressure test
+        run: >-
+          yarn test --dev
+          ReactDOMFragmentRefsSingletonObserverOwnership-test
+          ReactDOMFragmentRefsDocument-test
+          --runInBand
