@@ -1,0 +1,107 @@
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+--- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
++++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+@@ -4855,13 +4855,9 @@ export function releaseSingletonInstance(
+   // Remove the attributes and property-backed state owned by this Fiber.
+   clearSingletonProperties(instance, type, props);
+ 
+-  // These properties aren't cleared by updateProperties when their next
+-  // value is null. Normally that is handled by replacing/removing the host
+-  // instance, but a singleton cannot be removed.
+-  // TODO: HostSingleton updates do not currently schedule ContentReset when
+-  // dangerouslySetInnerHTML becomes undefined, so an ordinary update can leave
+-  // the previous HTML in place. This only handles the release path.
+-  if (props.dangerouslySetInnerHTML != null) {
++  // Clear child content only when this Fiber actually supplied opaque direct
++  // content. An object wrapper with a null/undefined __html value performs no
++  // direct DOM write and therefore owns no child content to clear on release.
++  if (props.children == null && shouldSetTextContent(type, props)) {
+     instance.textContent = '';
+   }
+   clearClickListener(instance as any as HTMLElement);
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -271,6 +271,73 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.style.backgroundColor).toBe('blue');
+   });
+ 
++  it(
++    'preserves external body children when releasing unset direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: undefined}} />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-external-style', 'true');
++      externalStyle.textContent = '.external { color: red; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.body).toBe(body);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'preserves document singleton identity when releasing unset html direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const html = document.documentElement;
++      const head = document.head;
++      const body = document.body;
++
++      root.render(
++        <html dangerouslySetInnerHTML={{__html: null}} />,
++      );
++      await waitForAll([]);
++
++      root.render(null);
++      await waitForAll([]);
++
++      expect(document.documentElement).toBe(html);
++      expect(document.head).toBe(head);
++      expect(document.body).toBe(body);
++    },
++  );
++
++  it(
++    'still clears actual body direct HTML when the singleton is released',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: '<div id="owned">owned</div>'}} />
++        </html>,
++      );
++      await waitForAll([]);
++      expect(document.getElementById('owned')).not.toBe(null);
++
++      root.render(<html><head /></html>);
++      await waitForAll([]);
++
++      expect(document.body).toBe(body);
++      expect(document.getElementById('owned')).toBe(null);
++    },
++  );
++
+   // @gate TODO
+   it('clears dangerouslySetInnerHTML when it becomes undefined', async () => {
+     const root = ReactDOMClient.createRoot(document);
