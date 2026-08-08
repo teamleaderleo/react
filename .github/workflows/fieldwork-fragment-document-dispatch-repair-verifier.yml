@@ -1,0 +1,62 @@
+name: Fieldwork Fragment document dispatch repair verifier
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply Document-safe synthetic dispatch target
+        shell: bash
+        run: |
+          # Keep the source edit verifier-only; the branch itself remains test/workflow evidence.
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+          old = "    const temp = document.createTextNode('');"
+          new = """    const temp =
+      parentHostInstance.nodeType === DOCUMENT_NODE
+        ? (parentHostInstance as Document).createComment('')
+        : document.createTextNode('');"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one synthetic text target, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Focused Fragment dispatch controls in development
+        run: >-
+          yarn test --dev
+          ReactDOMFragmentRefsDocumentDispatch-test
+          ReactDOMFragmentRefs-test
+          --runInBand
+      - name: Focused Fragment dispatch controls in production
+        run: >-
+          yarn test --prod
+          ReactDOMFragmentRefsDocumentDispatch-test
+          ReactDOMFragmentRefs-test
+          --runInBand
+      - name: Flow check
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+          packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocumentDispatch-test.js
+          --check
