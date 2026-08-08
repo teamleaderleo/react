@@ -14,24 +14,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight experiment and contract
+      - name: Preflight experiment and contracts
         run: |
           git apply --check fieldwork/host-singleton-stale-owner-guard.patch
           git apply --check fieldwork/host-singleton-stale-owner-guard-contract.patch
+          git apply --check fieldwork/host-singleton-suspense-stale-owner-contract.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply experiment and Activity contract
+      - name: Apply Activity and public Suspense contracts only
         run: |
-          git apply fieldwork/host-singleton-stale-owner-guard.patch
           git apply fieldwork/host-singleton-stale-owner-guard-contract.patch
-      - name: Require stale-owner containment controls to pass
+          git apply fieldwork/host-singleton-suspense-stale-owner-contract.patch
+      - name: Require current source to reproduce public Suspense stale-owner gap
+        shell: bash
+        run: |
+          set -u
+          pattern="does not let a suspended primary body overwrite the visible fallback owner"
+          if yarn test --dev ReactDOM-test --testNamePattern="$pattern"; then
+            echo "Current source unexpectedly passed the public Suspense stale-owner control."
+            exit 1
+          fi
+      - name: Apply stale-owner containment experiment
+        run: git apply fieldwork/host-singleton-stale-owner-guard.patch
+      - name: Require Activity stale-owner containment controls to pass
         run: >-
           yarn test --dev ReactDOMSingletonComponents-test
           --testNamePattern="releases the previous singleton props when an Activity becomes hidden|does not let a hidden singleton update mutate the visible owner|does not release a hidden singleton again when it is deleted|reacquires the latest singleton props after hidden updates"
+      - name: Require public Suspense stale-owner control to pass
+        run: >-
+          yarn test --dev ReactDOM-test
+          --testNamePattern="does not let a suspended primary body overwrite the visible fallback owner"
       - name: Require detached-child restoration to remain unresolved
         shell: bash
         run: |
