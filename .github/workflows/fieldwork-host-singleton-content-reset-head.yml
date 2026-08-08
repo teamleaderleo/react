@@ -112,9 +112,11 @@ jobs:
           ref: repair/host-singleton-content-reset
           path: source
           fetch-depth: 0
-      - name: Guard reviewed source head
+      - name: Guard reviewed source head and base
         working-directory: source
-        run: test "$(git rev-parse HEAD)" = "ed2c1ade64d40761fade7998afe83be62d2d1239"
+        run: |
+          test "$(git rev-parse HEAD)" = "ed2c1ade64d40761fade7998afe83be62d2d1239"
+          test "$(git rev-parse origin/main)" = "ec61f187fe39b0aa8ec6b508f2553b2047dc30cc"
       - uses: actions/setup-node@v4
         with:
           node-version-file: source/.nvmrc
@@ -139,17 +141,28 @@ jobs:
       - name: Re-run lint gate
         working-directory: source
         run: yarn linc
-      - name: Verify source-only diff
+      - name: Verify transition from reviewed source head
         working-directory: source
         run: |
-          git diff --name-only | sort > /tmp/actual-files
+          git diff --name-only | sort > /tmp/transition-files
           printf '%s\n' \
             packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
             packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
             packages/react-reconciler/src/ReactFiberBeginWork.js \
             packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
-            packages/react-reconciler/src/ReactFiberCommitWork.js | sort > /tmp/expected-files
-          diff -u /tmp/expected-files /tmp/actual-files
+            packages/react-reconciler/src/ReactFiberCommitWork.js | sort > /tmp/expected-transition-files
+          diff -u /tmp/expected-transition-files /tmp/transition-files
+      - name: Verify final packet against main
+        working-directory: source
+        run: |
+          git diff --name-only origin/main | sort > /tmp/final-files
+          printf '%s\n' \
+            packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
+            packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
+            packages/react-reconciler/src/ReactFiberBeginWork.js \
+            packages/react-reconciler/src/ReactFiberCommitWork.js | sort > /tmp/expected-final-files
+          diff -u /tmp/expected-final-files /tmp/final-files
+          git diff --quiet origin/main -- packages/react-reconciler/src/ReactFiberCommitHostEffects.js
       - name: Commit refined source
         working-directory: source
         run: |
