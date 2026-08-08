@@ -499,6 +499,7 @@ export function commitNewChildToFragmentInstance(
 export function deleteChildFromFragmentInstance(
   child: Instance,
   fragmentInstance: FragmentInstanceType,
+  _releaseObserverOwnership: boolean,
 ): void {
   // Noop
 }

@@ -2989,10 +2989,13 @@ type StoredEventListener = {
   optionsOrUseCapture: void | EventListenerOptionsOrUseCapture,
 };
 
+type FragmentObserver = IntersectionObserver | ResizeObserver;
+
 export type FragmentInstanceType = {
   _fragmentFiber: Fiber,
   _eventListeners: null | Array<StoredEventListener>,
-  _observers: null | Set<IntersectionObserver | ResizeObserver>,
+  _observers: null | Set<FragmentObserver>,
+  _observerTargets: null | Map<FragmentObserver, Set<Instance>>,
   addEventListener(
     type: string,
     listener: EventListener,
@@ -3021,6 +3024,78 @@ function FragmentInstance(this: FragmentInstanceType, fragmentFiber: Fiber) {
   this._fragmentFiber = fragmentFiber;
   this._eventListeners = null;
   this._observers = null;
+  this._observerTargets = null;
+}
+
+const fragmentObserverTargetOwners: WeakMap<
+  FragmentObserver,
+  WeakMap<Instance, number>,
+> = new WeakMap();
+
+function acquireFragmentObserverTarget(
+  fragmentInstance: FragmentInstanceType,
+  observer: FragmentObserver,
+  instance: Instance,
+): void {
+  let observerTargets = fragmentInstance._observerTargets;
+  if (observerTargets === null) {
+    observerTargets = new Map();
+    fragmentInstance._observerTargets = observerTargets;
+  }
+  let targets = observerTargets.get(observer);
+  if (targets === undefined) {
+    targets = new Set();
+    observerTargets.set(observer, targets);
+  }
+
+  if (!targets.has(instance)) {
+    targets.add(instance);
+    let targetOwners = fragmentObserverTargetOwners.get(observer);
+    if (targetOwners === undefined) {
+      targetOwners = new WeakMap();
+      fragmentObserverTargetOwners.set(observer, targetOwners);
+    }
+    const ownerCount = targetOwners.get(instance) || 0;
+    targetOwners.set(instance, ownerCount + 1);
+  }
+
+  observer.observe(instance);
+}
+
+function releaseFragmentObserverTarget(
+  fragmentInstance: FragmentInstanceType,
+  observer: FragmentObserver,
+  instance: Instance,
+  unobserveWhenLastOwner: boolean,
+): void {
+  const observerTargets = fragmentInstance._observerTargets;
+  if (observerTargets === null) {
+    return;
+  }
+  const targets = observerTargets.get(observer);
+  if (targets === undefined || !targets.delete(instance)) {
+    return;
+  }
+  if (targets.size === 0) {
+    observerTargets.delete(observer);
+  }
+
+  const targetOwners = fragmentObserverTargetOwners.get(observer);
+  if (targetOwners === undefined) {
+    return;
+  }
+  const ownerCount = targetOwners.get(instance);
+  if (ownerCount === undefined) {
+    return;
+  }
+  if (ownerCount === 1) {
+    targetOwners.delete(instance);
+    if (unobserveWhenLastOwner) {
+      observer.unobserve(instance);
+    }
+  } else {
+    targetOwners.set(instance, ownerCount - 1);
+  }
 }
 
 // $FlowFixMe[prop-missing]
@@ -3306,12 +3381,14 @@ FragmentInstance.prototype.observeUsing = function (
   traverseFragmentInstancesAndTextInstances(
     this._fragmentFiber,
     observeChild,
+    this,
     observer,
   );
 };
 function observeChild(
   child: Fiber,
-  observer: IntersectionObserver | ResizeObserver,
+  fragmentInstance: FragmentInstanceType,
+  observer: FragmentObserver,
 ) {
   if (enableFragmentRefsTextNodes) {
     // Skip text nodes - observers don't work on them
@@ -3320,7 +3397,7 @@ function observeChild(
     }
   }
   const instance = getInstanceFromHostFiber<Instance>(child);
-  observer.observe(instance);
+  acquireFragmentObserverTarget(fragmentInstance, observer, instance);
   return false;
 }
 // $FlowFixMe[prop-missing]
@@ -3341,13 +3418,15 @@ FragmentInstance.prototype.unobserveUsing = function (
     traverseFragmentInstancesAndTextInstances(
       this._fragmentFiber,
       unobserveChild,
+      this,
       observer,
     );
   }
 };
 function unobserveChild(
   child: Fiber,
-  observer: IntersectionObserver | ResizeObserver,
+  fragmentInstance: FragmentInstanceType,
+  observer: FragmentObserver,
 ) {
   if (enableFragmentRefsTextNodes) {
     // Skip text nodes - they were never observed
@@ -3356,7 +3435,7 @@ function unobserveChild(
     }
   }
   const instance = getInstanceFromHostFiber<Instance>(child);
-  observer.unobserve(instance);
+  releaseFragmentObserverTarget(fragmentInstance, observer, instance, true);
   return false;
 }
 // $FlowFixMe[prop-missing]
@@ -3730,7 +3809,7 @@ export function commitNewChildToFragmentInstance(
   }
   if (fragmentInstance._observers !== null) {
     fragmentInstance._observers.forEach(observer => {
-      observer.observe(instance);
+      acquireFragmentObserverTarget(fragmentInstance, observer, instance);
     });
   }
   if (enableFragmentRefsInstanceHandles) {
@@ -3741,11 +3820,22 @@ export function commitNewChildToFragmentInstance(
 export function deleteChildFromFragmentInstance(
   childInstance: InstanceWithFragmentHandles | Text,
   fragmentInstance: FragmentInstanceType,
+  releaseObserverOwnership: boolean,
 ): void {
   if (childInstance.nodeType === TEXT_NODE) {
     return;
   }
   const instance: InstanceWithFragmentHandles = childInstance as any;
+  if (releaseObserverOwnership && fragmentInstance._observers !== null) {
+    fragmentInstance._observers.forEach(observer => {
+      releaseFragmentObserverTarget(
+        fragmentInstance,
+        observer,
+        instance,
+        false,
+      );
+    });
+  }
   const eventListeners = fragmentInstance._eventListeners;
   if (eventListeners !== null) {
     for (let i = 0; i < eventListeners.length; i++) {

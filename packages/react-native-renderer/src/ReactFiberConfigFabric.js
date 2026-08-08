@@ -934,6 +934,7 @@ export function commitNewChildToFragmentInstance(
 export function deleteChildFromFragmentInstance(
   childInstance: Instance | TextInstance,
   fragmentInstance: FragmentInstanceType,
+  _releaseObserverOwnership: boolean,
 ): void {
   // Text nodes are not observable
   if (enableFragmentRefsTextNodes && childInstance.canonical == null) {
