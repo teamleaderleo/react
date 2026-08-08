@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-@@ -4890,5 +4890,7 @@ function clearSingletonPreambleContribution(instance: Instance): void {
+@@ -4890,5 +4890,6 @@ function clearSingletonPreambleContribution(instance: Instance): void {
    while (attributes.length) {
      instance.removeAttributeNode(attributes[0]);
    }
