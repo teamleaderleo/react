@@ -31,10 +31,7 @@ describe('ViewTransition image wait cleanup', () => {
 
     originalStartViewTransition = document.startViewTransition;
     originalGetAnimations = Element.prototype.getAnimations;
-    originalFontsDescriptor = Object.getOwnPropertyDescriptor(
-      document,
-      'fonts',
-    );
+    originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, 'fonts');
 
     Object.defineProperty(document, 'fonts', {
       configurable: true,
