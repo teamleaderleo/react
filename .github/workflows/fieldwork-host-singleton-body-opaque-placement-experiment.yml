@@ -17,6 +17,7 @@ jobs:
       - name: Preflight experiment and contract patches
         run: |
           git apply --check fieldwork/host-singleton-body-opaque-placement-experiment.patch
+          git apply --check fieldwork/host-singleton-body-opaque-placement-config-shim.patch
           git apply --check fieldwork/host-singleton-opaque-range-contract.patch
           git apply --check fieldwork/host-singleton-opaque-empty-slot-contract.patch
           git apply --check fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
@@ -31,6 +32,7 @@ jobs:
       - name: Apply experiment and contract tests
         run: |
           git apply fieldwork/host-singleton-body-opaque-placement-experiment.patch
+          git apply fieldwork/host-singleton-body-opaque-placement-config-shim.patch
           git apply fieldwork/host-singleton-opaque-range-contract.patch
           git apply fieldwork/host-singleton-opaque-empty-slot-contract.patch
           git apply fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
