@@ -1,0 +1,99 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOM-test.js b/packages/react-dom/src/__tests__/ReactDOM-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOM-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOM-test.js
+@@ -1001,5 +1001,88 @@ describe('ReactDOM', () => {
+       '<html lang="en"><head><meta itemprop="" content="primary" style=""></head><body><div style="">goodbye!</div></body></html>',
+     );
+   });
++
++  it('keeps body direct HTML ordered between root body-scope siblings', async () => {
++    function App({html}) {
++      return (
++        <>
++          <div id="root-before">before</div>
++          <html>
++            <head />
++            <body dangerouslySetInnerHTML={{__html: html}} />
++          </html>
++          <div id="root-after">after</div>
++        </>
++      );
++    }
++
++    const root = ReactDOMClient.createRoot(document);
++    await act(() => {
++      root.render(<App html={'<span id="opaque-middle">opaque</span>'} />);
++    });
++
++    assertConsoleErrorDev(['In HTML, <div> cannot be a child of <#document>']);
++
++    const body = document.body;
++    const before = document.getElementById('root-before');
++    const opaque = document.getElementById('opaque-middle');
++    const after = document.getElementById('root-after');
++
++    expect(before).not.toBe(null);
++    expect(opaque).not.toBe(null);
++    expect(after).not.toBe(null);
++    expect(Array.from(body.childNodes)).toEqual([before, opaque, after]);
++
++    await act(() => {
++      root.render(<App html={'<em id="opaque-middle-next">next</em>'} />);
++    });
++
++    expect(document.getElementById('root-before')).toBe(before);
++    expect(document.getElementById('root-after')).toBe(after);
++    expect(Array.from(body.childNodes)).toEqual([
++      before,
++      document.getElementById('opaque-middle-next'),
++      after,
++    ]);
++  });
++
++  it('keeps managed body children ordered when the body slot becomes opaque', async () => {
++    function App({opaque}) {
++      return (
++        <>
++          <div id="root-before-transition">before</div>
++          <html>
++            <head />
++            {opaque ? (
++              <body
++                dangerouslySetInnerHTML={{
++                  __html: '<span id="opaque-transition">opaque</span>',
++                }}
++              />
++            ) : (
++              <body>
++                <span id="managed-transition">managed</span>
++              </body>
++            )}
++          </html>
++          <div id="root-after-transition">after</div>
++        </>
++      );
++    }
++
++    const root = ReactDOMClient.createRoot(document);
++    await act(() => {
++      root.render(<App opaque={false} />);
++    });
++    assertConsoleErrorDev(['In HTML, <div> cannot be a child of <#document>']);
++
++    const body = document.body;
++    const before = document.getElementById('root-before-transition');
++    const managed = document.getElementById('managed-transition');
++    const after = document.getElementById('root-after-transition');
++    expect(Array.from(body.childNodes)).toEqual([before, managed, after]);
++
++    await act(() => {
++      root.render(<App opaque={true} />);
++    });
++
++    const opaque = document.getElementById('opaque-transition');
++    expect(document.getElementById('managed-transition')).toBe(null);
++    expect(document.getElementById('root-before-transition')).toBe(before);
++    expect(document.getElementById('root-after-transition')).toBe(after);
++    expect(Array.from(body.childNodes)).toEqual([before, opaque, after]);
++  });
+ });
