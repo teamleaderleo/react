@@ -1,0 +1,57 @@
+name: Fieldwork HostSingleton second review
+
+on:
+  pull_request:
+    branches:
+      - verify/host-singleton-content-reset-head
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  head-hoistable-pressure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight refined direct-content candidate and head pressure test
+        run: |
+          git apply --check fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply --check fieldwork/host-singleton-second-review-head-hoistable.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply candidate and head pressure test
+        run: |
+          git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply fieldwork/host-singleton-second-review-head-hoistable.patch
+      - name: Run focused head pressure test
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="preserves a stable hoistable when head leaves direct HTML"
+
+  hidden-placement-pressure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight Activity guard experiment and pressure tests
+        run: |
+          git apply --check fieldwork/host-singleton-offscreen-ownership-repair.patch
+          git apply --check fieldwork/host-singleton-offscreen-ownership.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply Activity guard experiment and existing ownership matrix
+        run: |
+          git apply fieldwork/host-singleton-offscreen-ownership-repair.patch
+          git apply fieldwork/host-singleton-offscreen-ownership.patch
+      - name: Preflight and apply hidden Placement pressure test
+        run: |
+          git apply --check fieldwork/host-singleton-second-review-hidden-placement.patch
+          git apply fieldwork/host-singleton-second-review-hidden-placement.patch
+      - name: Run focused hidden Placement pressure test
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="does not place new managed children from an already hidden singleton owner"
