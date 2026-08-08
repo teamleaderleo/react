@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,82 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,119 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -75,6 +75,40 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +      expect(body.contains(externalStyle)).toBe(true);
 +    },
 +  );
++
++  it('removes a managed style when body leaves direct HTML', async () => {
++    const root = ReactDOMClient.createRoot(document);
++    const body = document.body;
++
++    root.render(
++      <html>
++        <head />
++        <body
++          dangerouslySetInnerHTML={{
++            __html:
++              '<style id="managed-style">.managed { color: red; }</style>' +
++              '<div id="managed-old">old</div>',
++          }}
++        />
++      </html>,
++    );
++    await waitForAll([]);
++    expect(document.getElementById('managed-style')).not.toBe(null);
++
++    root.render(
++      <html>
++        <head />
++        <body>
++          <span id="managed-new">new</span>
++        </body>
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.getElementById('managed-style')).toBe(null);
++    expect(document.getElementById('managed-old')).toBe(null);
++    expect(document.getElementById('managed-new')).not.toBe(null);
++  });
 +
    // @gate TODO
    it('preserves imperative attributes when acquiring a singleton', async () => {
