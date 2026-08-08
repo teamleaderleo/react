@@ -13,7 +13,6 @@ concurrency:
 
 env:
   TZ: /usr/share/zoneinfo/America/Los_Angeles
-  # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#cache-segment-restore-timeout
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
 
 jobs:
@@ -37,6 +36,65 @@ jobs:
       - run: yarn install --frozen-lockfile
         if: steps.node_modules.outputs.cache-hit != 'true'
       - run: yarn prettier-check
+
+  fieldwork_suspended_commit_lifecycle:
+    name: Fieldwork suspended commit lifecycle controls
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Restore cached node_modules
+        uses: actions/cache/restore@v4
+        id: node_modules
+        with:
+          path: |
+            **/node_modules
+          key: shared-lint-node_modules-v7-${{ runner.arch }}-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
+      - run: yarn install --frozen-lockfile
+        if: steps.node_modules.outputs.cache-hit != 'true'
+      - name: Shim direct DOM host config imports
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          files = [
+              'packages/react-dom/src/__tests__/ReactDOMViewTransitionImageWaitCleanup-test.js',
+              'packages/react-dom/src/__tests__/ReactDOMSuspendedCommitTimerCleanup-test.js',
+              'packages/react-dom/src/__tests__/ReactDOMStylesheetPreloadListenerOwnership-test.js',
+              'packages/react-dom/src/__tests__/ReactDOMSuspenseyStylesheetPreloadCleanup-test.js',
+          ]
+          shim = """
+
+jest.mock('react-reconciler/src/ReactFiberHostContext', () => ({
+  getCurrentRootHostContainer: () => document,
+}));
+"""
+          for filename in files:
+              path = Path(filename)
+              text = path.read_text()
+              anchor = "'use strict';\n"
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'{filename}: expected one use strict anchor')
+              path.write_text(text.replace(anchor, anchor + shim, 1))
+          PY
+      - name: ViewTransition image listener control
+        continue-on-error: true
+        run: yarn test --dev ReactDOMViewTransitionImageWaitCleanup-test --runInBand
+      - name: Suspended commit timer control
+        continue-on-error: true
+        run: yarn test --dev ReactDOMSuspendedCommitTimerCleanup-test --runInBand
+      - name: Stylesheet listener ownership control
+        continue-on-error: true
+        run: yarn test --dev ReactDOMStylesheetPreloadListenerOwnership-test --runInBand
+      - name: Stylesheet preload cleanup control
+        continue-on-error: true
+        run: yarn test --dev ReactDOMSuspenseyStylesheetPreloadCleanup-test --runInBand
+      - name: DOM Flow
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
 
   eslint:
     name: Run eslint
