@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,201 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,244 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -56,6 +56,47 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +
 +    expect(body.textContent).toBe('managed new');
 +    expect(body.querySelector('div')).toBe(null);
++  });
++
++  it('replaces hydrated direct HTML with managed singleton children', async () => {
++    const serverHTML = '<div id="server-managed">server</div>';
++
++    await actIntoEmptyDocument(() => {
++      const {pipe} = ReactDOMFizzServer.renderToPipeableStream(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: serverHTML}} />
++        </html>,
++      );
++      pipe(writable);
++    });
++
++    const body = document.body;
++    const serverNode = document.getElementById('server-managed');
++    const root = ReactDOMClient.hydrateRoot(
++      document,
++      <html>
++        <head />
++        <body dangerouslySetInnerHTML={{__html: serverHTML}} />
++      </html>,
++    );
++    await waitForAll([]);
++
++    root.render(
++      <html>
++        <head />
++        <body>
++          <span id="client-managed">client</span>
++        </body>
++      </html>,
++    );
++    await waitForAll([]);
++
++    expect(document.body).toBe(body);
++    expect(serverNode.parentNode).toBe(null);
++    expect(body.innerHTML).toBe(
++      '<span id="client-managed">client</span>',
++    );
 +  });
 +
 +  it('preserves external body siblings when replacing text with children', async () => {
