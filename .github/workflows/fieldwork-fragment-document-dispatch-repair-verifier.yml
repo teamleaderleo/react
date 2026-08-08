@@ -1,0 +1,66 @@
+name: Fieldwork Fragment document dispatch repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/fragment-document-dispatch-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/fragment-document-dispatch-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply Document-safe synthetic dispatch target
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+          old = "    const temp = document.createTextNode('');"
+          new = """    const temp =
+      parentHostInstance.nodeType === DOCUMENT_NODE
+        ? (parentHostInstance as Document).createComment('')
+        : document.createTextNode('');"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one synthetic text target, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Focused Fragment dispatch controls in development
+        run: >-
+          yarn test --dev
+          ReactDOMFragmentRefsDocumentDispatch-test
+          ReactDOMFragmentRefs-test
+          --runInBand
+      - name: Focused Fragment dispatch controls in production
+        run: >-
+          yarn test --prod
+          ReactDOMFragmentRefsDocumentDispatch-test
+          ReactDOMFragmentRefs-test
+          --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+          packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocumentDispatch-test.js
+          --check
