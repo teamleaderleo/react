@@ -75,6 +75,37 @@ describe('FragmentRefs event registry', () => {
   });
 
   // @gate enableFragmentRefs
+  it('does not remove a listener registered directly on a child', async () => {
+    const fragmentRef = React.createRef();
+    const childRef = React.createRef();
+    const root = ReactDOMClient.createRoot(container);
+    const calls = [];
+
+    function directListener() {
+      calls.push('direct');
+    }
+    function fragmentListener() {
+      calls.push('fragment');
+    }
+
+    await act(() => {
+      root.render(
+        <Fragment ref={fragmentRef}>
+          <button ref={childRef}>Child</button>
+        </Fragment>,
+      );
+    });
+
+    childRef.current.addEventListener('click', directListener);
+    fragmentRef.current.addEventListener('click', fragmentListener);
+
+    fragmentRef.current.removeEventListener('click', directListener);
+    childRef.current.click();
+
+    expect(calls).toEqual(['direct', 'fragment']);
+  });
+
+  // @gate enableFragmentRefs
   it('treats omitted capture and false as the same listener identity', async () => {
     const fragmentRef = React.createRef();
     const root = ReactDOMClient.createRoot(container);
