@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
-@@ -9357,6 +9357,180 @@ describe('ReactDOMFizzServer', () => {
+@@ -9357,6 +9357,177 @@ describe('ReactDOMFizzServer', () => {
      );
    });
  
@@ -121,7 +121,6 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packa
 +                </body>
 +              }>
 +              <Boom />
-+              <span id="client-after-losing-body">client</span>
 +            </Suspense>
 +          </html>
 +        );
@@ -171,9 +170,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packa
 +            ),
 +      ]);
 +      expect(document.body.getAttribute('data-adopted-body')).toBe('');
-+      expect(document.getElementById('client-after-losing-body')).not.toBe(
-+        null,
-+      );
++      expect(document.getElementById('losing-body-child')).toBe(null);
 +
 +      root.unmount();
 +    },
