@@ -18,6 +18,7 @@ jobs:
         run: |
           git apply --check fieldwork/host-singleton-body-opaque-placement-experiment.patch
           git apply --check fieldwork/host-singleton-opaque-range-contract.patch
+          git apply --check fieldwork/host-singleton-opaque-empty-slot-contract.patch
           git apply --check fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
           git apply --check fieldwork/host-singleton-body-scope-sibling-contract.patch
           git apply --check fieldwork/host-singleton-opaque-parser-compat.patch
@@ -31,6 +32,7 @@ jobs:
         run: |
           git apply fieldwork/host-singleton-body-opaque-placement-experiment.patch
           git apply fieldwork/host-singleton-opaque-range-contract.patch
+          git apply fieldwork/host-singleton-opaque-empty-slot-contract.patch
           git apply fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
           git apply fieldwork/host-singleton-body-scope-sibling-contract.patch
           git apply fieldwork/host-singleton-opaque-parser-compat.patch
@@ -46,14 +48,21 @@ jobs:
         run: >-
           yarn test --dev trustedTypes-test.internal
           --testNamePattern="should not stringify trusted values for body singleton direct HTML"
-      - name: Require hydration provenance to remain unresolved
+      - name: Require known missing ownership cases to remain red
         shell: bash
         run: |
           set -u
-          pattern="preserves outside body style added before hydrating opaque HTML"
-          if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
-            echo "Hydration unexpectedly passed; inspect provenance before accepting this experiment."
-            exit 1
-          fi
+          expect_experiment_failure() {
+            local pattern="$1"
+            echo "Expecting this client-only prototype to remain incomplete for: $pattern"
+            if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
+              echo "Unexpected pass; inspect the mechanism before accepting it."
+              exit 1
+            fi
+          }
+
+          expect_experiment_failure "preserves outside body style added before hydrating opaque HTML"
+          expect_experiment_failure "keeps the empty direct HTML slot before a later outside node when becoming managed"
+          expect_experiment_failure "keeps the empty direct HTML slot before a later outside node when becoming nonempty"
       - name: Lint experiment
         run: yarn linc
