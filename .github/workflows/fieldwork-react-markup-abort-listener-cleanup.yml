@@ -40,16 +40,17 @@ jobs:
               "): Promise<string> {\n  return new Promise((resolve, reject) => {\n    let buffer = '';\n",
               "): Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    let buffer = '';\n",
           )
-          text = Path(client).read_text()
-          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 2:
-              raise SystemExit(
-                  f'client terminal-call assumptions changed: '
-                  f'resolve={text.count("resolve(buffer);")} '
-                  f'reject={text.count("reject(error);")}'
-              )
-          text = text.replace('resolve(buffer);', 'resolveWithCleanup(buffer);')
-          text = text.replace('reject(error);', 'rejectWithCleanup(error);')
-          Path(client).write_text(text)
+          replace_once(client, '          resolve(buffer);', '          resolveWithCleanup(buffer);')
+          replace_once(
+              client,
+              "      destroy(error: mixed) {\n        reject(error);\n      },",
+              "      destroy(error: mixed) {\n        rejectWithCleanup(error);\n      },",
+          )
+          replace_once(
+              client,
+              "      reject(error);\n\n      const onError = options && options.onError;",
+              "      rejectWithCleanup(error);\n\n      const onError = options && options.onError;",
+          )
           replace_once(
               client,
               "    if (options && options.signal) {\n      const signal = options.signal;\n      if (signal.aborted) {\n        abortFizz(fizzRequest, (signal as any).reason);\n      } else {\n        const listener = () => {\n          abortFizz(fizzRequest, (signal as any).reason);\n          signal.removeEventListener('abort', listener);\n        };\n        signal.addEventListener('abort', listener);\n      }\n    }\n",
@@ -62,16 +63,22 @@ jobs:
               "): Promise<string> {\n  return new Promise((resolve, reject) => {\n    const flightResponse = createFlightResponse(\n",
               "): Promise<string> {\n  const signal = options && options.signal ? options.signal : null;\n  return new Promise((resolve, reject) => {\n    let abortListener: null | (() => void) = null;\n    function cleanupAbortListener() {\n      if (signal !== null && abortListener !== null) {\n        signal.removeEventListener('abort', abortListener);\n        abortListener = null;\n      }\n    }\n    function resolveWithCleanup(value: string) {\n      cleanupAbortListener();\n      resolve(value);\n    }\n    function rejectWithCleanup(error: mixed) {\n      cleanupAbortListener();\n      reject(error);\n    }\n    const flightResponse = createFlightResponse(\n",
           )
-          text = Path(server).read_text()
-          if text.count('resolve(buffer);') != 1 or text.count('reject(error);') != 3:
-              raise SystemExit(
-                  f'server terminal-call assumptions changed: '
-                  f'resolve={text.count("resolve(buffer);")} '
-                  f'reject={text.count("reject(error);")}'
-              )
-          text = text.replace('resolve(buffer);', 'resolveWithCleanup(buffer);')
-          text = text.replace('reject(error);', 'rejectWithCleanup(error);')
-          Path(server).write_text(text)
+          replace_once(
+              server,
+              "      destroy(error: mixed): void {\n        abortFizz(fizzRequest, error);\n        reject(error);\n      },",
+              "      destroy(error: mixed): void {\n        abortFizz(fizzRequest, error);\n        rejectWithCleanup(error);\n      },",
+          )
+          replace_once(server, '          resolve(buffer);', '          resolveWithCleanup(buffer);')
+          replace_once(
+              server,
+              "      destroy(error) {\n        abortFlight(flightRequest, error);\n        reject(error);\n      },",
+              "      destroy(error) {\n        abortFlight(flightRequest, error);\n        rejectWithCleanup(error);\n      },",
+          )
+          replace_once(
+              server,
+              "      reject(error);\n\n      const onError = options && options.onError;",
+              "      rejectWithCleanup(error);\n\n      const onError = options && options.onError;",
+          )
           replace_once(
               server,
               "    if (options && options.signal) {\n      const signal = options.signal;\n      if (signal.aborted) {\n        abortFlight(flightRequest, (signal as any).reason);\n        abortFizz(fizzRequest, (signal as any).reason);\n      } else {\n        const listener = () => {\n          abortFlight(flightRequest, (signal as any).reason);\n          abortFizz(fizzRequest, (signal as any).reason);\n          signal.removeEventListener('abort', listener);\n        };\n        signal.addEventListener('abort', listener);\n      }\n    }\n",
