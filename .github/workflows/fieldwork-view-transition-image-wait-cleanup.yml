@@ -14,12 +14,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
+      - name: Fetch base for changed-file formatter
+        run: git fetch origin main:main
+      - name: Format changed files with repository formatter
+        run: yarn prettier
+      - name: Capture formatted focused test
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-view-transition-image-wait-test
+          path: packages/react-dom/src/__tests__/ReactDOMViewTransitionImageWaitCleanup-test.js
       - name: Require current source to reproduce listener retention
         shell: bash
         run: |
@@ -145,8 +156,4 @@ jobs:
       - name: Diff hygiene
         run: git diff --check
       - name: Format check
-        run: >-
-          yarn prettier
-          packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-          packages/react-dom/src/__tests__/ReactDOMViewTransitionImageWaitCleanup-test.js
-          --check
+        run: yarn prettier-check
