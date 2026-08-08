@@ -24,7 +24,7 @@ jobs:
           node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --frozen-lockfile
-      - name: Apply all three verified shutdown repairs
+      - name: Apply complete shutdown settlement repair
         shell: bash
         run: |
           python3 <<'PY'
@@ -80,6 +80,19 @@ jobs:
               anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
               1,
           )
+
+          old = """  const cleanup = cleanupBackendManagerSetup;\n  cleanupBackendManagerSetup = null;\n  cleanup?.();\n\n  delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;\n}\n"""
+          new = """  const cleanup = cleanupBackendManagerSetup;\n  cleanupBackendManagerSetup = null;\n  try {\n    cleanup?.();\n  } finally {\n    delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;\n  }\n}\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected finishBackendManagerShutdown cleanup shape')
+          text = text.replace(old, new, 1)
+
+          old = """  const cleanup = () => {\n    if (didCleanup) {\n      return;\n    }\n    didCleanup = true;\n\n    unsubscribeRendererListener();\n    unsubscribeBackendInstallationListener();\n    unsubscribeShutdownListener?.();\n    unsubscribeShutdownListener = null;\n\n    if (cleanupBackendManagerSetup === cleanup) {\n      cleanupBackendManagerSetup = null;\n    }\n  };\n"""
+          new = """  const cleanup = () => {\n    if (didCleanup) {\n      return;\n    }\n    didCleanup = true;\n\n    const shutdownListener = unsubscribeShutdownListener;\n    unsubscribeShutdownListener = null;\n    if (cleanupBackendManagerSetup === cleanup) {\n      cleanupBackendManagerSetup = null;\n    }\n\n    let didError = false;\n    let firstError: mixed = null;\n    const runCleanup = (cleanupFn: null | (() => void)) => {\n      if (cleanupFn === null) {\n        return;\n      }\n      try {\n        cleanupFn();\n      } catch (error) {\n        if (!didError) {\n          didError = true;\n          firstError = error;\n        } else {\n          reportGlobalError(error);\n        }\n      }\n    };\n\n    runCleanup(unsubscribeRendererListener);\n    runCleanup(unsubscribeBackendInstallationListener);\n    runCleanup(shutdownListener);\n\n    if (didError) {\n      throw firstError;\n    }\n  };\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected backendManager setup cleanup shape')
+          text = text.replace(old, new, 1)
+
           old = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    shutdownBackend();\n  }\n\n  finishBackendManagerShutdown();\n}\n"""
           new = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  let didError = false;\n  let firstError: mixed = null;\n  const captureError = (error: mixed) => {\n    if (!didError) {\n      didError = true;\n      firstError = error;\n    } else {\n      reportGlobalError(error);\n    }\n  };\n\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    try {\n      shutdownBackend();\n    } catch (error) {\n      captureError(error);\n    }\n  }\n\n  try {\n    finishBackendManagerShutdown();\n  } catch (error) {\n    captureError(error);\n  }\n\n  if (didError) {\n    throw firstError;\n  }\n}\n"""
           if text.count(old) != 1:
@@ -127,10 +140,6 @@ jobs:
             packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerPageHide.test.js \
             packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerShutdownIntegration.test.js
 
-          # The verifier branch contains test carriers and source edits in the
-          # working tree. Archive the verified packet first, then restore a clean
-          # checkout before switching to current main so no local file blocks the
-          # branch change.
           git reset --hard HEAD
           git clean -fd
           git fetch origin main
