@@ -1,0 +1,32 @@
+name: Fieldwork HostSingleton unset direct HTML release
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-unset-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight release-only candidate
+        run: git apply --check fieldwork/host-singleton-unset-direct-html-release.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply release-only candidate
+        run: git apply fieldwork/host-singleton-unset-direct-html-release.patch
+      - name: Run focused development tests
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="releasing unset direct HTML|releasing unset html direct HTML|still clears actual body direct HTML"
+      - name: Run focused production tests
+        run: yarn test --prod ReactDOMSingletonComponents-test --testNamePattern="releasing unset direct HTML|releasing unset html direct HTML|still clears actual body direct HTML"
+      - name: Run changed-file lint
+        run: yarn linc
