@@ -38,7 +38,7 @@ jobs:
           --testNamePattern="Can render a fallback <body> alongside a non-fallback head"
       - name: Validate changed test files
         run: yarn linc
-      - name: Require current source to reproduce preamble attribute ownership gaps
+      - name: Require current source to reproduce preamble property and owner gaps
         shell: bash
         run: |
           set -u
@@ -53,6 +53,7 @@ jobs:
 
           expect_current_failure "preserves imperative attributes when clearing a preamble contribution"
           expect_current_failure "clears only contributed style properties from a preamble contribution"
+          expect_current_failure "keeps the current singleton event props after clearing a preamble contribution"
       - name: Require current source to reproduce opaque preamble content gap
         shell: bash
         run: |
