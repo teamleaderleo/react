@@ -1,0 +1,65 @@
+name: Fieldwork DevTools backend shutdown repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/devtools-backend-shutdown-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/devtools-backend-shutdown-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply backend cleanup fanout repair
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-devtools-shared/src/backend/index.js')
+          text = path.read_text()
+
+          import_anchor = "import Agent from './agent';\n"
+          if text.count(import_anchor) != 1:
+              raise SystemExit('unexpected backend Agent import shape')
+          text = text.replace(
+              import_anchor,
+              import_anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+
+          old = """  const onAgentShutdown = () => {\n    subs.forEach(fn => fn());\n    hook.rendererInterfaces.forEach(rendererInterface => {\n      rendererInterface.cleanup();\n    });\n    hook.reactDevtoolsAgent = null;\n  };\n"""
+          new = """  const onAgentShutdown = () => {\n    let didError = false;\n    let firstError: mixed = null;\n    const runCleanup = (cleanup: () => void) => {\n      try {\n        cleanup();\n      } catch (error) {\n        if (!didError) {\n          didError = true;\n          firstError = error;\n        } else {\n          reportGlobalError(error);\n        }\n      }\n    };\n\n    subs.forEach(runCleanup);\n    hook.rendererInterfaces.forEach(rendererInterface => {\n      runCleanup(() => rendererInterface.cleanup());\n    });\n    hook.reactDevtoolsAgent = null;\n\n    if (didError) {\n      throw firstError;\n    }\n  };\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one onAgentShutdown block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Reverse backend shutdown controls
+        run: yarn test-build-devtools backendShutdown --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-devtools-shared/src/backend/index.js
+          packages/react-devtools-shared/src/__tests__/backendShutdown.test.js
+          --check
