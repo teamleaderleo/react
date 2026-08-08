@@ -80,7 +80,23 @@ export function experimental_renderToHTML(
   children: ReactMarkupNodeList,
   options?: MarkupOptions,
 ): Promise<string> {
+  const signal = options && options.signal ? options.signal : null;
   return new Promise((resolve, reject) => {
+    let abortListener: null | (() => void) = null;
+    function cleanupAbortListener() {
+      if (signal !== null && abortListener !== null) {
+        signal.removeEventListener('abort', abortListener);
+        abortListener = null;
+      }
+    }
+    function resolveWithCleanup(value: string) {
+      cleanupAbortListener();
+      resolve(value);
+    }
+    function rejectWithCleanup(error: mixed) {
+      cleanupAbortListener();
+      reject(error);
+    }
     const flightResponse = createFlightResponse(
       null,
       null,
@@ -108,7 +124,7 @@ export function experimental_renderToHTML(
       },
       destroy(error: mixed): void {
         abortFizz(fizzRequest, error);
-        reject(error);
+        rejectWithCleanup(error);
       },
     };
     let buffer = '';
@@ -119,14 +135,14 @@ export function experimental_renderToHTML(
           buffer += chunk;
         } else {
           // null indicates that we finished
-          resolve(buffer);
+          resolveWithCleanup(buffer);
         }
         return true;
       },
       // $FlowFixMe[missing-local-annot]
       destroy(error) {
         abortFlight(flightRequest, error);
-        reject(error);
+        rejectWithCleanup(error);
       },
     };
 
@@ -155,7 +171,7 @@ export function experimental_renderToHTML(
       // Any error rejects the promise, regardless of where it happened.
       // Unlike other React SSR we don't want to put Suspense boundaries into
       // client rendering mode because there's no client rendering here.
-      reject(error);
+      rejectWithCleanup(error);
 
       const onError = options && options.onError;
       if (onError) {
@@ -217,17 +233,17 @@ export function experimental_renderToHTML(
       undefined,
       undefined,
     );
-    if (options && options.signal) {
-      const signal = options.signal;
+    if (signal !== null) {
       if (signal.aborted) {
         abortFlight(flightRequest, (signal as any).reason);
         abortFizz(fizzRequest, (signal as any).reason);
       } else {
         const listener = () => {
+          cleanupAbortListener();
           abortFlight(flightRequest, (signal as any).reason);
           abortFizz(fizzRequest, (signal as any).reason);
-          signal.removeEventListener('abort', listener);
         };
+        abortListener = listener;
         signal.addEventListener('abort', listener);
       }
     }
