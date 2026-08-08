@@ -18,7 +18,7 @@ jest.mock('react-devtools-shared/src/utils', () => ({
 }));
 
 describe('DevTools composed shutdown settlement', () => {
-  function createHook(backends) {
+  function createHook(backends, unsubscribeFailure) {
     const listeners = new Map();
     return {
       backends,
@@ -38,12 +38,17 @@ describe('DevTools composed shutdown settlement', () => {
         eventListeners.push(listener);
         return () => {
           const currentListeners = listeners.get(event);
-          if (currentListeners === undefined) {
-            return;
+          if (currentListeners !== undefined) {
+            const index = currentListeners.indexOf(listener);
+            if (index !== -1) {
+              currentListeners.splice(index, 1);
+            }
           }
-          const index = currentListeners.indexOf(listener);
-          if (index !== -1) {
-            currentListeners.splice(index, 1);
+          if (
+            unsubscribeFailure !== undefined &&
+            unsubscribeFailure.event === event
+          ) {
+            throw unsubscribeFailure.error;
           }
         };
       },
@@ -87,6 +92,23 @@ describe('DevTools composed shutdown settlement', () => {
     };
   }
 
+  function installHook(hook) {
+    delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+    Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
+      configurable: true,
+      value: hook,
+    });
+  }
+
+  function dispatchWelcome() {
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source: window,
+        data: {source: 'react-devtools-content-script'},
+      }),
+    );
+  }
+
   it('settles backend cleanup, Bridge, Agent, and manager after one backend cleanup fails', () => {
     jest.resetModules();
     delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
@@ -103,11 +125,7 @@ describe('DevTools composed shutdown settlement', () => {
       createRealBackend('backend-b', bridges, agents),
     );
     const hook = createHook(backends);
-    delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
-    Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
-      configurable: true,
-      value: hook,
-    });
+    installHook(hook);
 
     const reportedErrors = [];
     const onError = event => {
@@ -118,12 +136,7 @@ describe('DevTools composed shutdown settlement', () => {
 
     try {
       require('../backendManager');
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          source: window,
-          data: {source: 'react-devtools-content-script'},
-        }),
-      );
+      dispatchWelcome();
 
       expect(bridges.map(entry => entry.name)).toEqual([
         'backend-a',
@@ -162,9 +175,6 @@ describe('DevTools composed shutdown settlement', () => {
         thrownError = error;
       }
 
-      // Backend A's initBackend cleanup reports the first failure. The repaired
-      // Bridge must still become terminal, pagehide must continue to backend B,
-      // and backend B's initBackend cleanup must also run.
       expect(cleanupCalls).toBe(2);
       expect(bridges).toHaveLength(2);
       for (let i = 0; i < bridges.length; i++) {
@@ -173,8 +183,6 @@ describe('DevTools composed shutdown settlement', () => {
         );
       }
 
-      // Agent.shutdown() is also expected to clear its own EventEmitter state.
-      // A shutdown listener failure must not skip that terminal cleanup.
       for (let i = 0; i < agents.length; i++) {
         agents[i].agent.emit('fieldwork-probe');
       }
@@ -194,6 +202,52 @@ describe('DevTools composed shutdown settlement', () => {
         } catch (error) {}
       }
       window.removeEventListener('error', onError);
+      delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
+    }
+  });
+
+  it('finishes the manager when direct backend shutdown reports setup cleanup failure', () => {
+    jest.resetModules();
+    delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
+
+    const bridges = [];
+    const agents = [];
+    const backends = new Map();
+    backends.set(
+      'backend-a',
+      createRealBackend('backend-a', bridges, agents),
+    );
+    const setupCleanupError = new Error(
+      'backend installation subscription cleanup failed',
+    );
+    const hook = createHook(backends, {
+      event: 'devtools-backend-installed',
+      error: setupCleanupError,
+    });
+    installHook(hook);
+
+    try {
+      require('../backendManager');
+      dispatchWelcome();
+      expect(bridges).toHaveLength(1);
+      expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(true);
+
+      expect(() => bridges[0].bridge.shutdown()).toThrow(setupCleanupError);
+
+      expect(hook.reactDevtoolsAgent).toBe(null);
+      expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(
+        undefined,
+      );
+      expect(() => bridges[0].bridge.send('late-message')).toThrow(
+        'Cannot send a message through a Bridge that has been shut down.',
+      );
+    } finally {
+      if (window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__) {
+        try {
+          window.dispatchEvent(new Event('pagehide'));
+        } catch (error) {}
+      }
       delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
       delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
     }
