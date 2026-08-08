@@ -20,6 +20,7 @@ jobs:
           git apply --check fieldwork/host-singleton-preamble-body-inner-html-stream-compat.patch
           git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
           git apply --check fieldwork/host-singleton-preamble-opaque-content-contract.patch
+          git apply --check fieldwork/host-singleton-preamble-marker-collision-contract.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -32,6 +33,7 @@ jobs:
           git apply fieldwork/host-singleton-preamble-body-inner-html-stream-compat.patch
           git apply fieldwork/host-singleton-preamble-ownership-contract.patch
           git apply fieldwork/host-singleton-preamble-opaque-content-contract.patch
+          git apply fieldwork/host-singleton-preamble-marker-collision-contract.patch
       - name: Validate existing Fizz body preamble behavior
         run: >-
           yarn test --dev ReactDOMFizzServer-test
@@ -40,23 +42,33 @@ jobs:
         run: >-
           yarn test --dev ReactDOMFizzServer-test
           --testNamePattern="hydrates a resolved body direct HTML preamble contribution without duplication"
-      - name: Require opaque fallback preamble content to be cleaned by boundary takeover
+      - name: Validate opaque fallback cleanup benefit
         run: >-
           yarn test --dev ReactDOMFizzServer-test
           --testNamePattern="clears opaque body content contributed by a discarded preamble boundary"
-      - name: Require attribute ownership to remain a separate unresolved lane
+      - name: Require marker collision falsifier to remain red
+        shell: bash
+        run: |
+          set -u
+          pattern="does not treat opaque body comments as preamble contribution markers"
+          if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
+            echo "Marker collision unexpectedly passed; inspect before reconsidering this rejected stream split."
+            exit 1
+          fi
+      - name: Require property and current-owner bugs to remain separate
         shell: bash
         run: |
           set -u
           expect_experiment_failure() {
             local pattern="$1"
             if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
-              echo "Attribute ownership unexpectedly passed; inspect before accepting this split."
+              echo "Separate preamble ownership gap unexpectedly passed; inspect before accepting this split."
               exit 1
             fi
           }
 
           expect_experiment_failure "preserves imperative attributes when clearing a preamble contribution"
           expect_experiment_failure "clears only contributed style properties from a preamble contribution"
+          expect_experiment_failure "keeps the current singleton event props after clearing a preamble contribution"
       - name: Lint experiment
         run: yarn linc
