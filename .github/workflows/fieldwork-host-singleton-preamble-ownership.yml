@@ -54,13 +54,18 @@ jobs:
           expect_current_failure "preserves imperative attributes when clearing a preamble contribution"
           expect_current_failure "clears only contributed style properties from a preamble contribution"
           expect_current_failure "keeps the current singleton event props after clearing a preamble contribution"
-      - name: Require current source to reproduce opaque preamble content gap
+      - name: Require current source to reproduce Fizz preamble ownership gaps
         shell: bash
         run: |
           set -u
-          pattern="clears opaque body content contributed by a discarded preamble boundary"
-          echo "Expecting untouched current source to fail: $pattern"
-          if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
-            echo "Unexpected pass for current-source opaque preamble ownership control."
-            exit 1
-          fi
+          expect_current_failure() {
+            local pattern="$1"
+            echo "Expecting untouched current source to fail: $pattern"
+            if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
+              echo "Unexpected pass for current-source Fizz preamble ownership control: $pattern"
+              exit 1
+            fi
+          }
+
+          expect_current_failure "clears opaque body content contributed by a discarded preamble boundary"
+          expect_current_failure "does not clear the adopted body for an unadopted preamble marker"
