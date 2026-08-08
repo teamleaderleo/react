@@ -31,7 +31,10 @@ describe('ViewTransition image wait cleanup', () => {
 
     originalStartViewTransition = document.startViewTransition;
     originalGetAnimations = Element.prototype.getAnimations;
-    originalFontsDescriptor = Object.getOwnPropertyDescriptor(document, 'fonts');
+    originalFontsDescriptor = Object.getOwnPropertyDescriptor(
+      document,
+      'fonts',
+    );
 
     Object.defineProperty(document, 'fonts', {
       configurable: true,
@@ -172,13 +175,16 @@ describe('ViewTransition image wait cleanup', () => {
     expectBothTemporaryListenersRemoved(removeEventListener);
   });
 
-  it('removes earlier image listeners when the byte budget abandons image waits', () => {
-    const first = createPendingImage();
-    const tooLarge = createPendingImage(2000, 2000);
-    const removeEventListener = jest.spyOn(first, 'removeEventListener');
+  it(
+    'removes earlier image listeners when the byte budget abandons image waits',
+    () => {
+      const first = createPendingImage();
+      const tooLarge = createPendingImage(2000, 2000);
+      const removeEventListener = jest.spyOn(first, 'removeEventListener');
 
-    beginTransition([first, tooLarge]);
+      beginTransition([first, tooLarge]);
 
-    expectBothTemporaryListenersRemoved(removeEventListener);
-  });
+      expectBothTemporaryListenersRemoved(removeEventListener);
+    },
+  );
 });
