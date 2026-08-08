@@ -1,0 +1,152 @@
+name: Fieldwork suspensey stylesheet preload cleanup
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stylesheet-preload-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Require current source to reproduce listener retention
+        shell: bash
+        run: |
+          if yarn test --dev ReactDOMSuspenseyStylesheetPreloadCleanup-test --runInBand; then
+            echo "Current source unexpectedly passed all stylesheet preload cleanup controls."
+            exit 1
+          fi
+      - name: Apply stylesheet preload ownership experiment
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              """  suspenseyImages: Array<HTMLImageElement>, // instances of suspensey images (whether loaded or not)
+  waitingForImages: boolean, // false when we're no longer blocking on images""",
+              """  suspenseyImages: Array<HTMLImageElement>, // instances of suspensey images (whether loaded or not)
+  stylesheetWaitCleanups: Array<() => void>,
+  waitingForImages: boolean, // false when we're no longer blocking on images""",
+          )
+
+          replace_once(
+              """    suspenseyImages: [],
+    waitingForImages: true,""",
+              """    suspenseyImages: [],
+    stylesheetWaitCleanups: [],
+    waitingForImages: true,""",
+          )
+
+          marker = """export function suspendResource(
+  state: SuspendedState,
+  hoistableRoot: HoistableRoot,
+  resource: Resource,
+  props: any,
+): void {"""
+          helper = """function waitForStylesheetPreload(
+  state: SuspendedState,
+  preload: HTMLLinkElement,
+): void {
+  state.count++;
+  let active = true;
+  function cleanup() {
+    if (!active) {
+      return;
+    }
+    active = false;
+    preload.removeEventListener('load', ping);
+    preload.removeEventListener('error', ping);
+  }
+  function ping() {
+    if (!active) {
+      return;
+    }
+    cleanup();
+    onUnsuspend.call(state);
+  }
+  state.stylesheetWaitCleanups.push(cleanup);
+  preload.addEventListener('load', ping);
+  preload.addEventListener('error', ping);
+}
+
+function cleanupStylesheetPreloadWaits(state: SuspendedState): void {
+  const cleanups = state.stylesheetWaitCleanups;
+  state.stylesheetWaitCleanups = [];
+  for (let i = 0; i < cleanups.length; i++) {
+    cleanups[i]();
+  }
+}
+
+""" + marker
+          replace_once(marker, helper)
+
+          replace_once(
+              """      const preloadEl = resource.state.preload;
+      if (preloadEl && (resource.state.loading & Settled) === NotLoaded) {
+        state.count++;
+        const ping = onUnsuspend.bind(state);
+        preloadEl.addEventListener('load', ping);
+        preloadEl.addEventListener('error', ping);
+      }""",
+              """      const preloadEl = resource.state.preload;
+      if (preloadEl && (resource.state.loading & Settled) === NotLoaded) {
+        waitForStylesheetPreload(state, preloadEl);
+      }""",
+          )
+
+          replace_once(
+              """      const stylesheetTimer = setTimeout(() => {
+        if (state.stylesheets) {""",
+              """      const stylesheetTimer = setTimeout(() => {
+        cleanupStylesheetPreloadWaits(state);
+        if (state.stylesheets) {""",
+          )
+
+          replace_once(
+              """      return () => {
+        state.unsuspend = null;
+        clearTimeout(stylesheetTimer);""",
+              """      return () => {
+        state.unsuspend = null;
+        cleanupStylesheetPreloadWaits(state);
+        clearTimeout(stylesheetTimer);""",
+          )
+
+          path.write_text(text)
+          PY
+      - name: Focused cleanup controls in development
+        run: yarn test --dev ReactDOMSuspenseyStylesheetPreloadCleanup-test --runInBand
+      - name: Focused cleanup controls in production
+        run: yarn test --prod ReactDOMSuspenseyStylesheetPreloadCleanup-test --runInBand
+      - name: DOM Flow
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+          packages/react-dom/src/__tests__/ReactDOMSuspenseyStylesheetPreloadCleanup-test.js
+          --check
