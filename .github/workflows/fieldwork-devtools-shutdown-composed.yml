@@ -127,6 +127,12 @@ jobs:
             packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerPageHide.test.js \
             packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerShutdownIntegration.test.js
 
+          # The verifier branch contains test carriers and source edits in the
+          # working tree. Archive the verified packet first, then restore a clean
+          # checkout before switching to current main so no local file blocks the
+          # branch change.
+          git reset --hard HEAD
+          git clean -fd
           git fetch origin main
           git checkout -B scratch/devtools-shutdown-settlement-source origin/main
           tar -xf "$packet"
