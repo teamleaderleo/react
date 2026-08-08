@@ -10,52 +10,36 @@ permissions:
   contents: read
 
 jobs:
-  preserve-current-client-owner:
+  real-owner-reachability:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight source and contract patches
+      - name: Preflight contract patches
         run: |
-          git apply --check fieldwork/host-singleton-preamble-preserve-client-owner.patch
           git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
-          git apply --check fieldwork/host-singleton-preamble-opaque-content-contract.patch
+          git apply --check fieldwork/host-singleton-preamble-real-owner-contract.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply source and contract patches
+      - name: Apply synthetic and real-Fizz ownership controls
         run: |
-          git apply fieldwork/host-singleton-preamble-preserve-client-owner.patch
           git apply fieldwork/host-singleton-preamble-ownership-contract.patch
-          git apply fieldwork/host-singleton-preamble-opaque-content-contract.patch
-      - name: Require current client event ownership to survive marker cleanup
+          git apply fieldwork/host-singleton-preamble-real-owner-contract.patch
+      - name: Require real Fizz takeover to restore body event ownership on current source
         run: >-
-          yarn test --dev ReactDOMSingletonComponents-test
-          --testNamePattern="keeps the current singleton event props after clearing a preamble contribution"
-      - name: Require attribute and style ownership to remain unresolved
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="keeps body event props after a real preamble boundary client takeover"
+      - name: Confirm the synthetic marker arrangement still exposes detach behavior
         shell: bash
         run: |
           set -u
-          expect_experiment_failure() {
-            local pattern="$1"
-            if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
-              echo "Property ownership unexpectedly passed; inspect before accepting this split."
-              exit 1
-            fi
-          }
-
-          expect_experiment_failure "preserves imperative attributes when clearing a preamble contribution"
-          expect_experiment_failure "clears only contributed style properties from a preamble contribution"
-      - name: Require opaque preamble child ownership to remain unresolved
-        shell: bash
-        run: |
-          set -u
-          pattern="clears opaque body content contributed by a discarded preamble boundary"
-          if yarn test --dev ReactDOMFizzServer-test --testNamePattern="$pattern"; then
-            echo "Opaque child ownership unexpectedly passed; inspect before accepting this split."
+          pattern="keeps the current singleton event props after clearing a preamble contribution"
+          if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
+            echo "Synthetic marker control unexpectedly passed; inspect the lifecycle assumptions."
             exit 1
           fi
-      - name: Lint experiment
+      - name: Lint verifier
         run: yarn linc
