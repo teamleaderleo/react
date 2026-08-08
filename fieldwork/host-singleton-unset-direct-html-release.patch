@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-@@ -4855,13 +4855,9 @@ export function releaseSingletonInstance(
+@@ -4855,13 +4855,10 @@ export function releaseSingletonInstance(
    // Remove the attributes and property-backed state owned by this Fiber.
    clearSingletonProperties(instance, type, props);
  
@@ -22,7 +22,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -271,6 +271,80 @@ describe('ReactDOM HostSingleton', () => {
+@@ -271,6 +271,88 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.style.backgroundColor).toBe('blue');
    });
  
