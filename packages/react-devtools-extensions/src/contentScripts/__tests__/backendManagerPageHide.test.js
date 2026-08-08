@@ -10,6 +10,7 @@
 'use strict';
 
 jest.mock('react-devtools-shared/src/utils', () => ({
+  ...jest.requireActual('react-devtools-shared/src/utils'),
   getIsReloadAndProfileSupported: () => false,
   getIfReloadedAndProfiling: () => false,
   onReloadAndProfile: () => {},
