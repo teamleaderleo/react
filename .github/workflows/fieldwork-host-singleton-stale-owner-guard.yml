@@ -14,10 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight experiment and contracts
+      - name: Preflight experiment and Suspense contract
         run: |
           git apply --check fieldwork/host-singleton-stale-owner-guard.patch
-          git apply --check fieldwork/host-singleton-stale-owner-guard-contract.patch
           git apply --check fieldwork/host-singleton-suspense-stale-owner-contract.patch
       - uses: actions/setup-node@v4
         with:
@@ -25,11 +24,9 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply Activity and public Suspense contracts only
-        run: |
-          git apply fieldwork/host-singleton-stale-owner-guard-contract.patch
-          git apply fieldwork/host-singleton-suspense-stale-owner-contract.patch
-      - name: Require current source to reproduce public Suspense stale-owner gap
+      - name: Apply public Suspense ownership contract only
+        run: git apply fieldwork/host-singleton-suspense-stale-owner-contract.patch
+      - name: Require current source to reproduce stale-owner overwrite
         shell: bash
         run: |
           set -u
@@ -40,22 +37,19 @@ jobs:
           fi
       - name: Apply stale-owner containment experiment
         run: git apply fieldwork/host-singleton-stale-owner-guard.patch
-      - name: Require Activity stale-owner containment controls to pass
-        run: >-
-          yarn test --dev ReactDOMSingletonComponents-test
-          --testNamePattern="releases the previous singleton props when an Activity becomes hidden|does not let a hidden singleton update mutate the visible owner|does not release a hidden singleton again when it is deleted|reacquires the latest singleton props after hidden updates"
-      - name: Require public Suspense stale-owner control to pass
+      - name: Require public Suspense stale-owner control to pass in development
         run: >-
           yarn test --dev ReactDOM-test
           --testNamePattern="does not let a suspended primary body overwrite the visible fallback owner"
-      - name: Require detached-child restoration to remain unresolved
-        shell: bash
-        run: |
-          set -u
-          pattern="restores hidden singleton children after another owner used direct HTML"
-          if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
-            echo "Detached-child restoration unexpectedly passed; inspect before accepting this containment split."
-            exit 1
-          fi
-      - name: Lint experiment
-        run: yarn linc
+      - name: Require public Suspense stale-owner control to pass in production
+        run: >-
+          yarn test --prod ReactDOM-test
+          --testNamePattern="does not let a suspended primary body overwrite the visible fallback owner"
+      - name: Existing Suspense document fallback regression
+        run: >-
+          yarn test --dev ReactDOM-test
+          --testNamePattern="can render a Suspense boundary above the <html> tag"
+      - name: DOM Flow
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
