@@ -1,0 +1,157 @@
+name: Fieldwork Fragment shared observer repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/fragment-shared-observer-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/fragment-shared-observer-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply logical Fragment observer ownership bookkeeping
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          dom = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = dom.read_text()
+
+          old = """type StoredEventListener = {\n  type: string,\n  listener: EventListener,\n  optionsOrUseCapture: void | EventListenerOptionsOrUseCapture,\n};\n\nexport type FragmentInstanceType = {\n  _fragmentFiber: Fiber,\n  _eventListeners: null | Array<StoredEventListener>,\n  _observers: null | Set<IntersectionObserver | ResizeObserver>,\n"""
+          new = """type StoredEventListener = {\n  type: string,\n  listener: EventListener,\n  optionsOrUseCapture: void | EventListenerOptionsOrUseCapture,\n};\n\ntype FragmentObserver = IntersectionObserver | ResizeObserver;\n\nexport type FragmentInstanceType = {\n  _fragmentFiber: Fiber,\n  _eventListeners: null | Array<StoredEventListener>,\n  _observers: null | Set<FragmentObserver>,\n  _observerTargets: null | Map<FragmentObserver, Set<Instance>>,\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected FragmentInstanceType observer shape')
+          text = text.replace(old, new, 1)
+
+          old = """function FragmentInstance(this: FragmentInstanceType, fragmentFiber: Fiber) {\n  this._fragmentFiber = fragmentFiber;\n  this._eventListeners = null;\n  this._observers = null;\n}\n"""
+          new = """function FragmentInstance(this: FragmentInstanceType, fragmentFiber: Fiber) {\n  this._fragmentFiber = fragmentFiber;\n  this._eventListeners = null;\n  this._observers = null;\n  this._observerTargets = null;\n}\n\nconst fragmentObserverTargetOwners: WeakMap<\n  FragmentObserver,\n  WeakMap<Instance, number>,\n> = new WeakMap();\n\nfunction acquireFragmentObserverTarget(\n  fragmentInstance: FragmentInstanceType,\n  observer: FragmentObserver,\n  instance: Instance,\n): void {\n  let observerTargets = fragmentInstance._observerTargets;\n  if (observerTargets === null) {\n    observerTargets = new Map();\n    fragmentInstance._observerTargets = observerTargets;\n  }\n  let targets = observerTargets.get(observer);\n  if (targets === undefined) {\n    targets = new Set();\n    observerTargets.set(observer, targets);\n  }\n\n  if (!targets.has(instance)) {\n    targets.add(instance);\n    let targetOwners = fragmentObserverTargetOwners.get(observer);\n    if (targetOwners === undefined) {\n      targetOwners = new WeakMap();\n      fragmentObserverTargetOwners.set(observer, targetOwners);\n    }\n    const ownerCount = targetOwners.get(instance) || 0;\n    targetOwners.set(instance, ownerCount + 1);\n  }\n\n  // Preserve the platform call made by the existing implementation. Observer\n  // observe() is idempotent for an already-observed target.\n  observer.observe(instance);\n}\n\nfunction releaseFragmentObserverTarget(\n  fragmentInstance: FragmentInstanceType,\n  observer: FragmentObserver,\n  instance: Instance,\n  unobserveWhenLastOwner: boolean,\n): void {\n  const observerTargets = fragmentInstance._observerTargets;\n  const targets =\n    observerTargets === null ? undefined : observerTargets.get(observer);\n  if (targets === undefined || !targets.delete(instance)) {\n    return;\n  }\n  if (targets.size === 0) {\n    observerTargets.delete(observer);\n  }\n\n  const targetOwners = fragmentObserverTargetOwners.get(observer);\n  if (targetOwners === undefined) {\n    return;\n  }\n  const ownerCount = targetOwners.get(instance);\n  if (ownerCount === undefined) {\n    return;\n  }\n  if (ownerCount === 1) {\n    targetOwners.delete(instance);\n    if (unobserveWhenLastOwner) {\n      observer.unobserve(instance);\n    }\n  } else {\n    targetOwners.set(instance, ownerCount - 1);\n  }\n}\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected FragmentInstance constructor shape')
+          text = text.replace(old, new, 1)
+
+          old = """  traverseFragmentInstancesAndTextInstances(\n    this._fragmentFiber,\n    observeChild,\n    observer,\n  );\n};\nfunction observeChild(\n  child: Fiber,\n  observer: IntersectionObserver | ResizeObserver,\n) {\n"""
+          new = """  traverseFragmentInstancesAndTextInstances(\n    this._fragmentFiber,\n    observeChild,\n    this,\n    observer,\n  );\n};\nfunction observeChild(\n  child: Fiber,\n  fragmentInstance: FragmentInstanceType,\n  observer: FragmentObserver,\n) {\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected observeUsing traversal shape')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              "  const instance = getInstanceFromHostFiber<Instance>(child);\n  observer.observe(instance);\n  return false;\n}\n// $FlowFixMe[prop-missing]\nFragmentInstance.prototype.unobserveUsing",
+              "  const instance = getInstanceFromHostFiber<Instance>(child);\n  acquireFragmentObserverTarget(fragmentInstance, observer, instance);\n  return false;\n}\n// $FlowFixMe[prop-missing]\nFragmentInstance.prototype.unobserveUsing",
+              1,
+          )
+
+          old = """    traverseFragmentInstancesAndTextInstances(\n      this._fragmentFiber,\n      unobserveChild,\n      observer,\n    );\n  }\n};\nfunction unobserveChild(\n  child: Fiber,\n  observer: IntersectionObserver | ResizeObserver,\n) {\n"""
+          new = """    traverseFragmentInstancesAndTextInstances(\n      this._fragmentFiber,\n      unobserveChild,\n      this,\n      observer,\n    );\n  }\n};\nfunction unobserveChild(\n  child: Fiber,\n  fragmentInstance: FragmentInstanceType,\n  observer: FragmentObserver,\n) {\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected unobserveUsing traversal shape')
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              "  const instance = getInstanceFromHostFiber<Instance>(child);\n  observer.unobserve(instance);\n  return false;\n}\n// $FlowFixMe[prop-missing]\nFragmentInstance.prototype.getClientRects",
+              "  const instance = getInstanceFromHostFiber<Instance>(child);\n  releaseFragmentObserverTarget(\n    fragmentInstance,\n    observer,\n    instance,\n    true,\n  );\n  return false;\n}\n// $FlowFixMe[prop-missing]\nFragmentInstance.prototype.getClientRects",
+              1,
+          )
+
+          old = """  if (fragmentInstance._observers !== null) {\n    fragmentInstance._observers.forEach(observer => {\n      observer.observe(instance);\n    });\n  }\n"""
+          new = """  if (fragmentInstance._observers !== null) {\n    fragmentInstance._observers.forEach(observer => {\n      acquireFragmentObserverTarget(fragmentInstance, observer, instance);\n    });\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected Fragment child observer insertion shape')
+          text = text.replace(old, new, 1)
+
+          old = """export function deleteChildFromFragmentInstance(\n  childInstance: InstanceWithFragmentHandles | Text,\n  fragmentInstance: FragmentInstanceType,\n): void {\n"""
+          new = """export function deleteChildFromFragmentInstance(\n  childInstance: InstanceWithFragmentHandles | Text,\n  fragmentInstance: FragmentInstanceType,\n  releaseObserverOwnership: boolean,\n): void {\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected deleteChildFromFragmentInstance signature')
+          text = text.replace(old, new, 1)
+
+          anchor = """  const eventListeners = fragmentInstance._eventListeners;\n  if (eventListeners !== null) {\n"""
+          insertion = """  if (releaseObserverOwnership && fragmentInstance._observers !== null) {\n    fragmentInstance._observers.forEach(observer => {\n      releaseFragmentObserverTarget(\n        fragmentInstance,\n        observer,\n        instance,\n        false,\n      );\n    });\n  }\n  const eventListeners = fragmentInstance._eventListeners;\n  if (eventListeners !== null) {\n"""
+          # Apply only inside deleteChildFromFragmentInstance by replacing the last
+          # matching event-listener block in this region.
+          idx = text.index('export function deleteChildFromFragmentInstance(')
+          tail = text[idx:]
+          if tail.count(anchor) < 1:
+              raise SystemExit('missing deletion event-listener anchor')
+          tail = tail.replace(anchor, insertion, 1)
+          text = text[:idx] + tail
+          dom.write_text(text)
+
+          host = Path('packages/react-reconciler/src/ReactFiberCommitHostEffects.js')
+          text = host.read_text()
+          old = """export function commitFragmentInstanceDeletionEffects(fiber: Fiber): void {\n"""
+          new = """export function commitFragmentInstanceDeletionEffects(\n  fiber: Fiber,\n  releaseObserverOwnership: boolean,\n): void {\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected deletion effects signature')
+          text = text.replace(old, new, 1)
+          old = """      deleteChildFromFragmentInstance(fiber.stateNode, fragmentInstance);\n"""
+          new = """      deleteChildFromFragmentInstance(\n        fiber.stateNode,\n        fragmentInstance,\n        releaseObserverOwnership,\n      );\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected deletion host call')
+          text = text.replace(old, new, 1)
+          host.write_text(text)
+
+          work = Path('packages/react-reconciler/src/ReactFiberCommitWork.js')
+          text = work.read_text()
+          count = text.count('commitFragmentInstanceDeletionEffects(deletedFiber);')
+          if count != 2:
+              raise SystemExit(f'expected 2 permanent deletion calls, found {count}')
+          text = text.replace(
+              'commitFragmentInstanceDeletionEffects(deletedFiber);',
+              'commitFragmentInstanceDeletionEffects(deletedFiber, true);',
+          )
+          count = text.count('commitFragmentInstanceDeletionEffects(finishedWork);')
+          if count != 1:
+              raise SystemExit(f'expected 1 disappear call, found {count}')
+          text = text.replace(
+              'commitFragmentInstanceDeletionEffects(finishedWork);',
+              'commitFragmentInstanceDeletionEffects(finishedWork, false);',
+              1,
+          )
+          work.write_text(text)
+          PY
+      - name: Focused shared observer controls in development
+        run: >-
+          yarn test --dev
+          ReactDOMFragmentRefsSharedObserver-test
+          ReactDOMFragmentRefsSingletonObserverOwnership-test
+          ReactDOMFragmentRefs-test
+          ReactDOMFragmentRefsDocument-test
+          --runInBand
+      - name: Focused shared observer controls in production
+        run: >-
+          yarn test --prod
+          ReactDOMFragmentRefsSharedObserver-test
+          ReactDOMFragmentRefsSingletonObserverOwnership-test
+          ReactDOMFragmentRefs-test
+          ReactDOMFragmentRefsDocument-test
+          --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+          packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+          packages/react-reconciler/src/ReactFiberCommitWork.js
+          packages/react-dom/src/__tests__/ReactDOMFragmentRefsSharedObserver-test.js
+          packages/react-dom/src/__tests__/ReactDOMFragmentRefsSingletonObserverOwnership-test.js
+          --check
