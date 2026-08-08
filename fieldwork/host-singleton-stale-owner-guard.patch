@@ -29,7 +29,7 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/pack
 +  }
 +
    try {
-@@ -846,2 +860,6 @@ export function commitHostSingletonRelease(releasingWork: Fiber) {
+@@ -846,1 +860,5 @@ export function commitHostSingletonRelease(releasingWork: Fiber) {
 +  if (!isCurrentHostSingletonOwner(releasingWork)) {
 +    return;
 +  }
