@@ -1,0 +1,29 @@
+name: Fieldwork DevTools Bridge shutdown terminal red control
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-red-control:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'research/devtools-bridge-shutdown-terminal'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/devtools-bridge-shutdown-terminal
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Focused Bridge shutdown terminal control
+        run: yarn test-build-devtools bridge-test --runInBand
