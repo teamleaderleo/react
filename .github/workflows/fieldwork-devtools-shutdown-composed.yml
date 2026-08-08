@@ -105,7 +105,14 @@ jobs:
           new = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  let didError = false;\n  let firstError: mixed = null;\n  const captureError = (error: mixed) => {\n    if (!didError) {\n      didError = true;\n      firstError = error;\n    } else {\n      reportGlobalError(error);\n    }\n  };\n\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    try {\n      shutdownBackend();\n    } catch (error) {\n      captureError(error);\n    }\n  }\n\n  try {\n    finishBackendManagerShutdown();\n  } catch (error) {\n    captureError(error);\n  }\n\n  if (didError) {\n    throw firstError;\n  }\n}\n"""
           if text.count(old) != 1:
               raise SystemExit('unexpected pagehide handler shape')
-          path.write_text(text.replace(old, new, 1))
+          text = text.replace(old, new, 1)
+
+          old = """  agent.addListener('shutdown', () => {\n    hasShutdownBackend = true;\n    shouldSendMessages = false;\n    activeBackendsShutdownCallbacks.delete(shutdownBackend);\n\n    hook.emit('shutdown');\n\n    if (activeBackendsShutdownCallbacks.size === 0) {\n      finishBackendManagerShutdown();\n    }\n  });\n"""
+          new = """  agent.addListener('shutdown', () => {\n    hasShutdownBackend = true;\n    shouldSendMessages = false;\n    activeBackendsShutdownCallbacks.delete(shutdownBackend);\n\n    let didError = false;\n    let firstError: mixed = null;\n    const captureError = (error: mixed) => {\n      if (!didError) {\n        didError = true;\n        firstError = error;\n      } else {\n        reportGlobalError(error);\n      }\n    };\n\n    try {\n      hook.emit('shutdown');\n    } catch (error) {\n      captureError(error);\n    }\n\n    if (activeBackendsShutdownCallbacks.size === 0) {\n      try {\n        finishBackendManagerShutdown();\n      } catch (error) {\n        captureError(error);\n      }\n    }\n\n    if (didError) {\n      throw firstError;\n    }\n  });\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected backendManager Agent shutdown listener shape')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
           PY
       - name: Build React for DevTools tests
         run: yarn build-for-devtools
