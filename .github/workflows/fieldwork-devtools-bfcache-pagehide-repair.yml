@@ -1,0 +1,65 @@
+name: Fieldwork DevTools BFCache pagehide repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/devtools-bfcache-pagehide-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/devtools-bfcache-pagehide-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply pagehide shutdown fanout repair
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-devtools-extensions/src/contentScripts/backendManager.js')
+          text = path.read_text()
+
+          import_anchor = "import {COMPACT_VERSION_NAME} from 'react-devtools-extensions/src/utils';\n"
+          if text.count(import_anchor) != 1:
+              raise SystemExit('unexpected backendManager import shape')
+          text = text.replace(
+              import_anchor,
+              import_anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+
+          old = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    shutdownBackend();\n  }\n\n  finishBackendManagerShutdown();\n}\n"""
+          new = """function handlePageHide() {\n  // A document in the back-forward cache keeps its JavaScript heap but loses\n  // its extension messaging port. Shut down locally while the document is\n  // still active so a restored page can attach a new Agent and replay its tree.\n  let didError = false;\n  let firstError: mixed = null;\n  const captureError = (error: mixed) => {\n    if (!didError) {\n      didError = true;\n      firstError = error;\n    } else {\n      reportGlobalError(error);\n    }\n  };\n\n  // eslint-disable-next-line no-for-of-loops/no-for-of-loops\n  for (const shutdownBackend of activeBackendsShutdownCallbacks) {\n    try {\n      shutdownBackend();\n    } catch (error) {\n      captureError(error);\n    }\n  }\n\n  try {\n    finishBackendManagerShutdown();\n  } catch (error) {\n    captureError(error);\n  }\n\n  if (didError) {\n    throw firstError;\n  }\n}\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one pagehide handler, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Reverse pagehide fanout control
+        run: yarn test-build-devtools backendManagerPageHide --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-devtools-extensions/src/contentScripts/backendManager.js
+          packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerPageHide.test.js
+          --check
