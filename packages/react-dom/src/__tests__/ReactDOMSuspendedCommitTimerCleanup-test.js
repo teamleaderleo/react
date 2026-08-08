@@ -47,7 +47,6 @@ describe('suspended commit timer cleanup', () => {
   });
 
   it('clears commit timeout owners before normal image readiness resumes', async () => {
-    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
     const {image, resolveDecode} = createPendingImage();
     const state = startSuspendingCommit();
 
@@ -55,27 +54,27 @@ describe('suspended commit timer cleanup', () => {
     const subscribe = waitForCommitToBeReady(state, 0);
     expect(typeof subscribe).toBe('function');
 
-    let clearsAtCommit = -1;
+    let timersAtCommit = -1;
     const commit = jest.fn(() => {
-      clearsAtCommit = clearTimeoutSpy.mock.calls.length;
+      timersAtCommit = jest.getTimerCount();
     });
     const cancel = subscribe(commit);
 
     expect(commit).not.toHaveBeenCalled();
-    expect(clearTimeoutSpy).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(2);
 
     resolveDecode();
     await Promise.resolve();
 
     expect(commit).toHaveBeenCalledTimes(1);
-    expect(clearsAtCommit).toBe(2);
-    expect(clearTimeoutSpy).toHaveBeenCalledTimes(2);
+    expect(timersAtCommit).toBe(0);
+    expect(jest.getTimerCount()).toBe(0);
 
     cancel();
+    expect(jest.getTimerCount()).toBe(0);
   });
 
   it('keeps explicit cancellation cleanup idempotent', () => {
-    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
     const {image} = createPendingImage();
     const state = startSuspendingCommit();
 
@@ -86,9 +85,12 @@ describe('suspended commit timer cleanup', () => {
     const commit = jest.fn();
     const cancel = subscribe(commit);
 
+    expect(jest.getTimerCount()).toBe(2);
+    cancel();
+    expect(jest.getTimerCount()).toBe(0);
     cancel();
 
     expect(commit).not.toHaveBeenCalled();
-    expect(clearTimeoutSpy).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(0);
   });
 });
