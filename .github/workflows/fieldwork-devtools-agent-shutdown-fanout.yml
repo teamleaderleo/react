@@ -23,5 +23,7 @@ jobs:
           node-version-file: .nvmrc
           cache: yarn
       - run: yarn install --frozen-lockfile
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
       - name: Focused backend renderer cleanup fanout
-        run: yarn test --dev backendShutdown-test --runInBand
+        run: yarn test-build-devtools backendShutdown --runInBand
