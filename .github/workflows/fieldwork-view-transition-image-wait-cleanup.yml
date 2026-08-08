@@ -1,0 +1,159 @@
+name: Fieldwork ViewTransition image wait cleanup
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-wait-cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Fetch base for changed-file formatter
+        run: git fetch origin main:main
+      - name: Format changed files with repository formatter
+        run: yarn prettier
+      - name: Capture formatted focused test
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-view-transition-image-wait-test
+          path: packages/react-dom/src/__tests__/ReactDOMViewTransitionImageWaitCleanup-test.js
+      - name: Require current source to reproduce listener retention
+        shell: bash
+        run: |
+          if yarn test --dev ReactDOMViewTransitionImageWaitCleanup-test --runInBand; then
+            echo "Current source unexpectedly passed all image-wait cleanup controls."
+            exit 1
+          fi
+      - name: Apply image-wait ownership experiment
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:80]!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              """function waitForImageToLoad(this: HTMLImageElement, resolve: () => void) {
+  // TODO: Use decode() instead of the load event here once the fix in
+  // https://issues.chromium.org/issues/420748301 has propagated fully.
+  this.addEventListener('load', resolve);
+  this.addEventListener('error', resolve);
+}""",
+              """function waitForImageToLoad(
+  this: HTMLImageElement,
+  cleanups: Array<() => void>,
+  resolve: () => void,
+) {
+  // TODO: Use decode() instead of the load event here once the fix in
+  // https://issues.chromium.org/issues/420748301 has propagated fully.
+  const image = this;
+  let active = true;
+  function cleanup() {
+    if (!active) {
+      return;
+    }
+    active = false;
+    image.removeEventListener('load', ping);
+    image.removeEventListener('error', ping);
+  }
+  function ping() {
+    cleanup();
+    resolve();
+  }
+  cleanups.push(cleanup);
+  image.addEventListener('load', ping);
+  image.addEventListener('error', ping);
+}""",
+          )
+
+          replace_once(
+              """        const blockingIndexSnapshot = blockingPromises.length;
+        if (suspendedState !== null) {""",
+              """        const blockingIndexSnapshot = blockingPromises.length;
+        const imageWaitCleanups: Array<() => void> = [];
+        function cleanupImageWaits() {
+          for (let i = 0; i < imageWaitCleanups.length; i++) {
+            imageWaitCleanups[i]();
+          }
+          imageWaitCleanups.length = 0;
+        }
+        if (suspendedState !== null) {""",
+          )
+
+          replace_once(
+              """                  // We don't think we'll be able to download all the images within
+                  // the timeout. Give up. Rewind to only block on fonts, if any.
+                  blockingPromises.length = blockingIndexSnapshot;
+                  break;""",
+              """                  // We don't think we'll be able to download all the images within
+                  // the timeout. Give up. Rewind to only block on fonts, if any.
+                  cleanupImageWaits();
+                  blockingPromises.length = blockingIndexSnapshot;
+                  break;""",
+          )
+
+          replace_once(
+              """                const loadingImage = new Promise(
+                  waitForImageToLoad.bind(suspenseyImage),
+                );""",
+              """                const loadingImage = new Promise(
+                  waitForImageToLoad.bind(
+                    suspenseyImage,
+                    imageWaitCleanups,
+                  ),
+                );""",
+          )
+
+          replace_once(
+              """          const blockingReady = Promise.race([
+            Promise.all(blockingPromises),
+            new Promise(resolve =>
+              setTimeout(resolve, SUSPENSEY_FONT_AND_IMAGE_TIMEOUT),
+            ),
+          ]).then(layoutCallback, layoutCallback);""",
+              """          const finishBlocking = () => {
+            cleanupImageWaits();
+            layoutCallback();
+          };
+          const blockingReady = Promise.race([
+            Promise.all(blockingPromises),
+            new Promise(resolve =>
+              setTimeout(resolve, SUSPENSEY_FONT_AND_IMAGE_TIMEOUT),
+            ),
+          ]).then(finishBlocking, finishBlocking);""",
+          )
+
+          path.write_text(text)
+          PY
+      - name: Focused cleanup controls in development
+        run: yarn test --dev ReactDOMViewTransitionImageWaitCleanup-test --runInBand
+      - name: Focused cleanup controls in production
+        run: yarn test --prod ReactDOMViewTransitionImageWaitCleanup-test --runInBand
+      - name: DOM Flow
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Format check
+        run: yarn prettier-check
