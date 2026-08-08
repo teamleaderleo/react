@@ -1,0 +1,65 @@
+name: Fieldwork DevTools Bridge shutdown repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/devtools-bridge-shutdown-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/devtools-bridge-shutdown-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply terminal-on-error Bridge shutdown
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-devtools-shared/src/bridge.js')
+          text = path.read_text()
+
+          import_anchor = "import EventEmitter from './events';\n"
+          if text.count(import_anchor) != 1:
+              raise SystemExit('unexpected EventEmitter import shape')
+          text = text.replace(
+              import_anchor,
+              import_anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+
+          old = """  shutdown(): void {\n    this._assertNotShutdown('shut down');\n\n    // Queue the shutdown outgoing message for subscribers.\n    this.emit('shutdown');\n    this.send('shutdown');\n\n    // Mark this bridge as destroyed, i.e. disable its public API.\n    this._isShutdown = true;\n\n    // Unsubscribe this bridge incoming message listeners to be sure, and so they don't have to do that.\n    this.removeAllListeners();\n\n    // Stop accepting and emitting incoming messages from the wall.\n    const wallUnlisten = this._wallUnlisten;\n    this._wallUnlisten = null;\n    try {\n      if (wallUnlisten !== null) {\n        wallUnlisten();\n      }\n    } finally {\n      // Synchronously flush all queued outgoing messages.\n      // At this step the subscribers' code may run in this call stack.\n      do {\n        this._flush();\n      } while (this._messageQueue.length);\n    }\n  }\n"""
+          new = """  shutdown(): void {\n    this._assertNotShutdown('shut down');\n\n    let didError = false;\n    let firstError: mixed = null;\n    const captureError = (error: mixed) => {\n      if (!didError) {\n        didError = true;\n        firstError = error;\n      } else {\n        reportGlobalError(error);\n      }\n    };\n\n    // Queue the shutdown outgoing message for subscribers before disabling\n    // the public API, but don't let a subscriber failure stop terminalization.\n    try {\n      this.emit('shutdown');\n    } catch (error) {\n      captureError(error);\n    }\n    try {\n      this.send('shutdown');\n    } catch (error) {\n      captureError(error);\n    }\n\n    // From this point on, the Bridge is terminal even if cleanup reports an\n    // error. Public methods must not be usable again.\n    this._isShutdown = true;\n    this.removeAllListeners();\n\n    const wallUnlisten = this._wallUnlisten;\n    this._wallUnlisten = null;\n    if (wallUnlisten !== null) {\n      try {\n        wallUnlisten();\n      } catch (error) {\n        captureError(error);\n      }\n    }\n\n    // Synchronously flush all queued outgoing messages.\n    // At this step the subscribers' code may run in this call stack.\n    try {\n      do {\n        this._flush();\n      } while (this._messageQueue.length);\n    } catch (error) {\n      captureError(error);\n    }\n\n    if (didError) {\n      throw firstError;\n    }\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one Bridge shutdown block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Reverse Bridge shutdown controls
+        run: yarn test-build-devtools bridge-test --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-devtools-shared/src/bridge.js
+          packages/react-devtools-shared/src/__tests__/bridge-test.js
+          --check
