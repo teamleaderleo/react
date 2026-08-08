@@ -1,0 +1,52 @@
+name: Fieldwork HostSingleton opaque range contract
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  current-source-contract-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight contract patch
+        run: git apply --check fieldwork/host-singleton-opaque-range-contract.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply contract tests only
+        run: git apply fieldwork/host-singleton-opaque-range-contract.patch
+      - name: Validate harness with existing passing singleton behavior
+        run: >-
+          yarn test --dev ReactDOMSingletonComponents-test
+          --testNamePattern="updates dangerouslySetInnerHTML on a singleton"
+      - name: Validate changed test file
+        run: yarn linc
+      - name: Require current source to reproduce each ownership gap
+        shell: bash
+        run: |
+          set -u
+          expect_current_failure() {
+            local pattern="$1"
+            echo "Expecting untouched current source to fail: $pattern"
+            if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
+              echo "Unexpected pass for current-source ownership control: $pattern"
+              exit 1
+            fi
+          }
+
+          expect_current_failure "preserves outside body style during initial direct HTML acquisition"
+          expect_current_failure "preserves outside body style during direct HTML update"
+          expect_current_failure "preserves outside body style when managed children become direct HTML"
+          expect_current_failure "keeps outside body styles around the same slot when direct HTML becomes managed children"
+          expect_current_failure "preserves later outside body style when releasing empty direct HTML"
+          expect_current_failure "removes opaque owned style while preserving outside style"
+          expect_current_failure "preserves outside body style added before hydrating opaque HTML"
