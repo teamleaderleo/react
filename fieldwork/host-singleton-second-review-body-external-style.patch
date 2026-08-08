@@ -1,0 +1,81 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -402,6 +402,82 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.innerHTML).toBe('<span>managed child</span>');
+   });
+ 
++  it(
++    'preserves an external style when body leaves direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{__html: '<div id="managed-old">old</div>'}}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-external-style', 'true');
++      externalStyle.textContent = '.external { color: red; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++          <body>
++            <span id="managed-new">new</span>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('managed-old')).toBe(null);
++      expect(document.getElementById('managed-new')).not.toBe(null);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
++  it(
++    'preserves an external style when releasing body direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{__html: '<div id="managed-old">old</div>'}}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-external-style', 'true');
++      externalStyle.textContent = '.external { color: blue; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(document.body).toBe(body);
++      expect(document.getElementById('managed-old')).toBe(null);
++      expect(body.contains(externalStyle)).toBe(true);
++    },
++  );
++
+   // @gate TODO
+   it('preserves imperative attributes when acquiring a singleton', async () => {
+     const body = document.body;
