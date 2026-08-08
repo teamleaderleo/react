@@ -14,6 +14,13 @@ global.ReadableStream =
 global.TextEncoder = require('util').TextEncoder;
 global.TextDecoder = require('util').TextDecoder;
 
+// The browser Flight client expects webpack runtime globals even when a test
+// feeds only model/debug rows and never resolves a client module.
+global.__webpack_require__ = function () {};
+global.__webpack_require__.u = id => id;
+global.__webpack_chunk_load__ = () => Promise.resolve();
+global.__webpack_get_script_filename__ = id => id;
+
 let ReactServerDOMClient;
 
 function createControlledResponse() {
