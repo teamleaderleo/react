@@ -46,6 +46,14 @@ jobs:
               raise SystemExit('unexpected onAgentShutdown shape')
           path.write_text(text.replace(old, new, 1))
 
+          path = Path('packages/react-devtools-shared/src/backend/agent.js')
+          text = path.read_text()
+          old = """  shutdown: () => void = () => {\n    // Clean up the overlay if visible, and associated events.\n    this.emit('shutdown');\n\n    this._bridge.removeAllListeners();\n    this.removeAllListeners();\n  };\n"""
+          new = """  shutdown: () => void = () => {\n    // Clean up the overlay if visible, and associated events.\n    try {\n      this.emit('shutdown');\n    } finally {\n      this._bridge.removeAllListeners();\n      this.removeAllListeners();\n    }\n  };\n"""
+          if text.count(old) != 1:
+              raise SystemExit('unexpected Agent shutdown shape')
+          path.write_text(text.replace(old, new, 1))
+
           path = Path('packages/react-devtools-shared/src/bridge.js')
           text = path.read_text()
           anchor = "import EventEmitter from './events';\n"
@@ -119,6 +127,7 @@ jobs:
         run: >-
           yarn prettier
           packages/react-devtools-shared/src/backend/index.js
+          packages/react-devtools-shared/src/backend/agent.js
           packages/react-devtools-shared/src/bridge.js
           packages/react-devtools-extensions/src/contentScripts/backendManager.js
           packages/react-devtools-shared/src/__tests__/backendShutdown.test.js
@@ -133,6 +142,7 @@ jobs:
           packet=/tmp/devtools-shutdown-settlement.tar
           tar -cf "$packet" \
             packages/react-devtools-shared/src/backend/index.js \
+            packages/react-devtools-shared/src/backend/agent.js \
             packages/react-devtools-shared/src/bridge.js \
             packages/react-devtools-extensions/src/contentScripts/backendManager.js \
             packages/react-devtools-shared/src/__tests__/backendShutdown.test.js \
@@ -150,6 +160,7 @@ jobs:
           git config user.email "fieldwork@users.noreply.github.com"
           git add \
             packages/react-devtools-shared/src/backend/index.js \
+            packages/react-devtools-shared/src/backend/agent.js \
             packages/react-devtools-shared/src/bridge.js \
             packages/react-devtools-extensions/src/contentScripts/backendManager.js \
             packages/react-devtools-shared/src/__tests__/backendShutdown.test.js \
