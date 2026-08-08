@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 --- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
 +++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
-@@ -4855,13 +4855,10 @@ export function releaseSingletonInstance(
+@@ -4855,13 +4855,14 @@ export function releaseSingletonInstance(
    // Remove the attributes and property-backed state owned by this Fiber.
    clearSingletonProperties(instance, type, props);
  
@@ -12,10 +12,14 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 -  // dangerouslySetInnerHTML becomes undefined, so an ordinary update can leave
 -  // the previous HTML in place. This only handles the release path.
 -  if (props.dangerouslySetInnerHTML != null) {
-+  // Clear child content only when this Fiber actually supplied opaque direct
-+  // content. An object wrapper with a null/undefined __html value performs no
-+  // direct DOM write and therefore owns no child content to clear on release.
-+  if (props.children == null && shouldSetTextContent(type, props)) {
++  // Clear child content only when this Fiber actually supplied direct HTML.
++  // A wrapper with a null/undefined __html value performs no DOM write.
++  const innerHTML = props.dangerouslySetInnerHTML;
++  if (
++    typeof innerHTML === 'object' &&
++    innerHTML !== null &&
++    innerHTML.__html != null
++  ) {
      instance.textContent = '';
    }
    clearClickListener(instance as any as HTMLElement);
