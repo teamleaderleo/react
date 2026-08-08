@@ -491,7 +491,7 @@ export function cloneInstance(
   const updatePayload = diffAttributePayloads(
     oldProps,
     newProps,
-    viewConfig.validAttributes,
+    instance.canonical.viewConfig.validAttributes,
   );
   // TODO: If the event handlers have changed, we need to update the current props
   // in the commit phase but there is no host config hook to do it yet.
@@ -934,6 +934,7 @@ export function commitNewChildToFragmentInstance(
 export function deleteChildFromFragmentInstance(
   childInstance: Instance | TextInstance,
   fragmentInstance: FragmentInstanceType,
+  _releaseObserverOwnership: boolean,
 ): void {
   // Text nodes are not observable
   if (enableFragmentRefsTextNodes && childInstance.canonical == null) {
