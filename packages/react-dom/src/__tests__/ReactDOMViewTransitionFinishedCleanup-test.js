@@ -75,14 +75,42 @@ describe('ReactDOM ViewTransition finished cleanup', () => {
   });
 
   // @gate enableViewTransition
-  it('does not recreate an unhandled rejection from a handled finished promise', async () => {
+  it('does not recreate a rejected child from a handled finished promise', async () => {
     let rejectFinished;
-    const finished = new Promise((resolve, reject) => {
+    const sourceFinished = new Promise((resolve, reject) => {
       rejectFinished = reject;
     });
     // The platform marks ViewTransition.finished handled so that an update
     // callback rejection does not create a duplicate unhandledrejection.
-    finished.catch(() => {});
+    sourceFinished.catch(() => {});
+
+    const childSettlements = [];
+    function trackChild(method, child) {
+      child.then(
+        () => {
+          childSettlements.push({method, status: 'fulfilled'});
+        },
+        reason => {
+          childSettlements.push({method, status: 'rejected', reason});
+        },
+      );
+      return child;
+    }
+
+    // Track the Promise returned by whichever registration primitive React
+    // chooses. This makes the regression deterministic instead of relying on
+    // the test runner's process-wide unhandled-rejection behavior.
+    const finished = {
+      then(onFulfilled, onRejected) {
+        return trackChild(
+          'then',
+          sourceFinished.then(onFulfilled, onRejected),
+        );
+      },
+      finally(onFinally) {
+        return trackChild('finally', sourceFinished.finally(onFinally));
+      },
+    };
 
     document.startViewTransition = function ({update}) {
       update();
@@ -117,12 +145,17 @@ describe('ReactDOM ViewTransition finished cleanup', () => {
 
     expect(cleanup).not.toHaveBeenCalled();
 
+    const rejection = new Error('view transition update failed');
     await act(async () => {
-      rejectFinished(new Error('view transition update failed'));
+      rejectFinished(rejection);
+      await Promise.resolve();
       await Promise.resolve();
       await Promise.resolve();
     });
 
     expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(
+      childSettlements.filter(settlement => settlement.status === 'rejected'),
+    ).toEqual([]);
   });
 });
