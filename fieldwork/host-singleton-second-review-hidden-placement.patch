@@ -1,0 +1,76 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -766,6 +766,72 @@ describe('ReactDOM HostSingleton', () => {
+       expect(body.contains(activityChild)).toBe(true);
+     },
+   );
++
++  it(
++    'does not place new managed children from an already hidden singleton owner',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body />
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body
++              dangerouslySetInnerHTML={{
++                __html: '<p id="visible-owner">visible</p>',
++              }}
++            />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++      expect(body.querySelector('#visible-owner')).not.toBe(null);
++      expect(body.querySelector('#hidden-new')).toBe(null);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body>
++                <div id="hidden-new">hidden</div>
++              </body>
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body
++              dangerouslySetInnerHTML={{
++                __html: '<p id="visible-owner">visible</p>',
++              }}
++            />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++
++      expect(body.querySelector('#visible-owner')).not.toBe(null);
++      expect(body.querySelector('#hidden-new')).toBe(null);
++      expect(body.innerHTML).toBe('<p id="visible-owner">visible</p>');
++    },
++  );
+ 
+   // @gate __DEV__
+   it('does not release or reacquire singletons when double invoking effects during hydration', async () => {
