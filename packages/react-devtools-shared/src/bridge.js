@@ -8,6 +8,7 @@
  */
 
 import EventEmitter from './events';
+import reportGlobalError from 'shared/reportGlobalError';
 
 import type {ComponentFilter, Wall, WallMessage} from './frontend/types';
 import type {
@@ -319,6 +320,7 @@ class Bridge<
   IncomingEvents: Object,
 > extends EventEmitter<EventEmitterEvents<IncomingEvents>> {
   _isShutdown: boolean = false;
+  _isShuttingDown: boolean = false;
   _messageQueue: Array<QueuedMessage> = [];
   _scheduledFlush: boolean = false;
   _wall: Wall;
@@ -403,30 +405,59 @@ class Bridge<
 
   shutdown(): void {
     this._assertNotShutdown('shut down');
+    if (this._isShuttingDown) {
+      throw new Error(
+        'Cannot shut down through a Bridge while it is already shutting down.',
+      );
+    }
+    this._isShuttingDown = true;
 
-    // Queue the shutdown outgoing message for subscribers.
-    this.emit('shutdown');
-    this.send('shutdown');
+    let didError = false;
+    let firstError: mixed = null;
+    const captureError = (error: mixed) => {
+      if (!didError) {
+        didError = true;
+        firstError = error;
+      } else {
+        reportGlobalError(error);
+      }
+    };
 
-    // Mark this bridge as destroyed, i.e. disable its public API.
+    try {
+      this.emit('shutdown');
+    } catch (error) {
+      captureError(error);
+    }
+    try {
+      this.send('shutdown');
+    } catch (error) {
+      captureError(error);
+    }
+
     this._isShutdown = true;
-
-    // Unsubscribe this bridge incoming message listeners to be sure, and so they don't have to do that.
     this.removeAllListeners();
 
-    // Stop accepting and emitting incoming messages from the wall.
     const wallUnlisten = this._wallUnlisten;
     this._wallUnlisten = null;
-    try {
-      if (wallUnlisten !== null) {
+    if (wallUnlisten !== null) {
+      try {
         wallUnlisten();
+      } catch (error) {
+        captureError(error);
       }
-    } finally {
-      // Synchronously flush all queued outgoing messages.
-      // At this step the subscribers' code may run in this call stack.
+    }
+
+    try {
       do {
         this._flush();
       } while (this._messageQueue.length);
+    } catch (error) {
+      captureError(error);
+    }
+
+    this._isShuttingDown = false;
+    if (didError) {
+      throw firstError;
     }
   }
 
