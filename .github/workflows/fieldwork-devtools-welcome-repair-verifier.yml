@@ -1,0 +1,51 @@
+name: Fieldwork DevTools welcome repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/devtools-welcome-null-message-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/devtools-welcome-null-message-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply null-safe welcome guard
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-devtools-extensions/src/contentScripts/backendManager.js')
+          text = path.read_text()
+          old = """  if (\n    event.source !== window ||\n    event.data.source !== 'react-devtools-content-script'\n  ) {"""
+          new = """  if (\n    event.source !== window ||\n    !event.data ||\n    event.data.source !== 'react-devtools-content-script'\n  ) {"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one welcome guard, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Reverse welcome boundary red control
+        run: yarn test-build-devtools backendManagerWelcome --runInBand
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Format check
+        run: yarn prettier packages/react-devtools-extensions/src/contentScripts/backendManager.js packages/react-devtools-extensions/src/contentScripts/__tests__/backendManagerWelcome.test.js --check
