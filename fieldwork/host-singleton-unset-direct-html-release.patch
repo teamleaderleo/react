@@ -22,7 +22,7 @@ diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/pac
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -271,6 +271,73 @@ describe('ReactDOM HostSingleton', () => {
+@@ -271,6 +271,80 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.style.backgroundColor).toBe('blue');
    });
  
@@ -65,9 +65,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +      const head = document.head;
 +      const body = document.body;
 +
-+      root.render(
-+        <html dangerouslySetInnerHTML={{__html: null}} />,
-+      );
++      root.render(<html dangerouslySetInnerHTML={{__html: null}} />);
 +      await waitForAll([]);
 +
 +      root.render(null);
@@ -88,13 +86,21 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +      root.render(
 +        <html>
 +          <head />
-+          <body dangerouslySetInnerHTML={{__html: '<div id="owned">owned</div>'}} />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<div id="owned">owned</div>',
++            }}
++          />
 +        </html>,
 +      );
 +      await waitForAll([]);
 +      expect(document.getElementById('owned')).not.toBe(null);
 +
-+      root.render(<html><head /></html>);
++      root.render(
++        <html>
++          <head />
++        </html>,
++      );
 +      await waitForAll([]);
 +
 +      expect(document.body).toBe(body);
