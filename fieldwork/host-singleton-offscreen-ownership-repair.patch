@@ -15,11 +15,14 @@ diff --git a/packages/react-reconciler/src/ReactFiberCommitWork.js b/packages/re
  
          hostParent = prevHostParent;
          hostParentIsContainer = prevHostParentIsContainer;
-@@ -2225,7 +2227,11 @@ function commitMutationEffectsOnFiber(
+@@ -2225,7 +2227,13 @@ function commitMutationEffectsOnFiber(
              safelyDetachRef(current, current.return);
            }
          }
 -        if (current !== null && flags & Update) {
++        // A previously hidden singleton has already been released. Do not let
++        // hidden work mutate the shared host instance; reappear acquisition
++        // applies the latest memoized props when ownership returns.
 +        if (
 +          !offscreenSubtreeWasHidden &&
 +          current !== null &&
