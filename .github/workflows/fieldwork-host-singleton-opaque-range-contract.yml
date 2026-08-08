@@ -19,6 +19,7 @@ jobs:
           git apply --check fieldwork/host-singleton-opaque-range-contract.patch
           git apply --check fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
           git apply --check fieldwork/host-singleton-body-scope-sibling-contract.patch
+          git apply --check fieldwork/host-singleton-opaque-parser-compat.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -30,10 +31,15 @@ jobs:
           git apply fieldwork/host-singleton-opaque-range-contract.patch
           git apply fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
           git apply fieldwork/host-singleton-body-scope-sibling-contract.patch
-      - name: Validate singleton harness with existing passing behavior
+          git apply fieldwork/host-singleton-opaque-parser-compat.patch
+      - name: Validate singleton harness and parser compatibility
         run: >-
           yarn test --dev ReactDOMSingletonComponents-test
-          --testNamePattern="updates dangerouslySetInnerHTML on a singleton"
+          --testNamePattern="updates dangerouslySetInnerHTML on a singleton|keeps scripts inert when body uses dangerouslySetInnerHTML"
+      - name: Validate Trusted Types compatibility
+        run: >-
+          yarn test --dev trustedTypes-test.internal
+          --testNamePattern="should not stringify trusted values for body singleton direct HTML"
       - name: Validate document-placement harness with existing passing behavior
         run: >-
           yarn test --dev ReactDOM-test
