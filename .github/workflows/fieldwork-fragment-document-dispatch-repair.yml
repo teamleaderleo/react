@@ -1,15 +1,22 @@
 name: Fieldwork Fragment document dispatch repair
 
 on:
-  push:
-    branches: [repair/fragment-document-dispatch]
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+concurrency:
+  group: fieldwork-fragment-document-dispatch-repair
+  cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
   repair:
-    if: github.repository == 'teamleaderleo/react'
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'repair/fragment-document-dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
