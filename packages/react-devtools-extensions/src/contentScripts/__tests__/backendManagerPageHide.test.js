@@ -18,8 +18,9 @@ jest.mock('react-devtools-shared/src/utils', () => ({
 }));
 
 describe('DevTools backend manager pagehide shutdown', () => {
-  function createHook(backends) {
+  function createHook(backends, unsubscribeFns) {
     const listeners = new Map();
+    let unsubscribeIndex = 0;
     return {
       backends,
       renderers: new Map(),
@@ -32,6 +33,9 @@ describe('DevTools backend manager pagehide shutdown', () => {
           listeners.set(event, eventListeners);
         }
         eventListeners.push(listener);
+        if (unsubscribeFns !== undefined) {
+          return unsubscribeFns[unsubscribeIndex++];
+        }
         return () => {
           const currentListeners = listeners.get(event);
           if (currentListeners === undefined) {
@@ -106,6 +110,23 @@ describe('DevTools backend manager pagehide shutdown', () => {
     };
   }
 
+  function installHook(hook) {
+    delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+    Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
+      configurable: true,
+      value: hook,
+    });
+  }
+
+  function dispatchWelcome() {
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source: window,
+        data: {source: 'react-devtools-content-script'},
+      }),
+    );
+  }
+
   it('continues shutting down backends when one shutdown reports an error', () => {
     jest.resetModules();
     delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
@@ -118,11 +139,7 @@ describe('DevTools backend manager pagehide shutdown', () => {
         ['backend-b', createBackend('backend-b', shutdowns, null)],
       ]),
     );
-    delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
-    Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
-      configurable: true,
-      value: hook,
-    });
+    installHook(hook);
 
     const reportedErrors = [];
     const onError = event => {
@@ -133,12 +150,7 @@ describe('DevTools backend manager pagehide shutdown', () => {
 
     try {
       require('../backendManager');
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          source: window,
-          data: {source: 'react-devtools-content-script'},
-        }),
-      );
+      dispatchWelcome();
 
       expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(true);
 
@@ -162,6 +174,58 @@ describe('DevTools backend manager pagehide shutdown', () => {
           window.dispatchEvent(new Event('pagehide'));
         } catch (error) {}
       }
+      window.removeEventListener('error', onError);
+      delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+      delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
+    }
+  });
+
+  it('finishes manager setup cleanup when one unsubscribe throws', () => {
+    jest.resetModules();
+    delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
+
+    const expectedError = new Error('renderer subscription cleanup failed');
+    const unsubscribeRenderer = jest.fn(() => {
+      throw expectedError;
+    });
+    const unsubscribeBackendInstallation = jest.fn();
+    const unsubscribeShutdown = jest.fn();
+    const hook = createHook(new Map(), [
+      unsubscribeRenderer,
+      unsubscribeBackendInstallation,
+      unsubscribeShutdown,
+    ]);
+    installHook(hook);
+
+    const reportedErrors = [];
+    const onError = event => {
+      reportedErrors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener('error', onError);
+
+    try {
+      require('../backendManager');
+      dispatchWelcome();
+      expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(true);
+
+      let thrownError = null;
+      try {
+        window.dispatchEvent(new Event('pagehide'));
+      } catch (error) {
+        thrownError = error;
+      }
+
+      expect(unsubscribeRenderer).toHaveBeenCalledTimes(1);
+      expect(unsubscribeBackendInstallation).toHaveBeenCalledTimes(1);
+      expect(unsubscribeShutdown).toHaveBeenCalledTimes(1);
+      expect(window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__).toBe(
+        undefined,
+      );
+      expect(
+        thrownError === expectedError || reportedErrors.includes(expectedError),
+      ).toBe(true);
+    } finally {
       window.removeEventListener('error', onError);
       delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
       delete window.__REACT_DEVTOOLS_BACKEND_MANAGER_INJECTED__;
