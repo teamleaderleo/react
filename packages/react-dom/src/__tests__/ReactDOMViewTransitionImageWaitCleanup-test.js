@@ -100,6 +100,39 @@ describe('ViewTransition image wait cleanup', () => {
     return image;
   }
 
+  function trackTemporaryListeners(image) {
+    const activeListeners = {
+      load: new Set(),
+      error: new Set(),
+    };
+    const addEventListener = image.addEventListener.bind(image);
+    const removeEventListener = image.removeEventListener.bind(image);
+
+    jest
+      .spyOn(image, 'addEventListener')
+      .mockImplementation((type, listener, options) => {
+        if (type === 'load' || type === 'error') {
+          activeListeners[type].add(listener);
+        }
+        return addEventListener(type, listener, options);
+      });
+    jest
+      .spyOn(image, 'removeEventListener')
+      .mockImplementation((type, listener, options) => {
+        if (type === 'load' || type === 'error') {
+          activeListeners[type].delete(listener);
+        }
+        return removeEventListener(type, listener, options);
+      });
+
+    return activeListeners;
+  }
+
+  function expectTemporaryListenerCounts(activeListeners, load, error) {
+    expect(activeListeners.load.size).toBe(load);
+    expect(activeListeners.error.size).toBe(error);
+  }
+
   function beginTransition(images) {
     let updateResult;
     document.startViewTransition = ({update}) => {
@@ -131,48 +164,43 @@ describe('ViewTransition image wait cleanup', () => {
     return updateResult;
   }
 
-  function expectBothTemporaryListenersRemoved(removeEventListener) {
-    expect(removeEventListener).toHaveBeenCalledWith(
-      'load',
-      expect.any(Function),
-    );
-    expect(removeEventListener).toHaveBeenCalledWith(
-      'error',
-      expect.any(Function),
-    );
-  }
-
   it('removes both temporary listeners when the image loads', async () => {
     const image = createPendingImage();
-    const removeEventListener = jest.spyOn(image, 'removeEventListener');
+    const activeListeners = trackTemporaryListeners(image);
 
     const updateResult = beginTransition([image]);
+    expectTemporaryListenerCounts(activeListeners, 1, 1);
+
     image.dispatchEvent(new Event('load'));
     await updateResult;
 
-    expectBothTemporaryListenersRemoved(removeEventListener);
+    expectTemporaryListenerCounts(activeListeners, 0, 0);
   });
 
   it('removes both temporary listeners when the image errors', async () => {
     const image = createPendingImage();
-    const removeEventListener = jest.spyOn(image, 'removeEventListener');
+    const activeListeners = trackTemporaryListeners(image);
 
     const updateResult = beginTransition([image]);
+    expectTemporaryListenerCounts(activeListeners, 1, 1);
+
     image.dispatchEvent(new Event('error'));
     await updateResult;
 
-    expectBothTemporaryListenersRemoved(removeEventListener);
+    expectTemporaryListenerCounts(activeListeners, 0, 0);
   });
 
   it('removes both temporary listeners when the transition wait times out', async () => {
     const image = createPendingImage();
-    const removeEventListener = jest.spyOn(image, 'removeEventListener');
+    const activeListeners = trackTemporaryListeners(image);
 
     const updateResult = beginTransition([image]);
+    expectTemporaryListenerCounts(activeListeners, 1, 1);
+
     jest.advanceTimersByTime(500);
     await updateResult;
 
-    expectBothTemporaryListenersRemoved(removeEventListener);
+    expectTemporaryListenerCounts(activeListeners, 0, 0);
   });
 
   it(
@@ -180,11 +208,13 @@ describe('ViewTransition image wait cleanup', () => {
     () => {
       const first = createPendingImage();
       const tooLarge = createPendingImage(2000, 2000);
-      const removeEventListener = jest.spyOn(first, 'removeEventListener');
+      const firstListeners = trackTemporaryListeners(first);
+      const tooLargeListeners = trackTemporaryListeners(tooLarge);
 
       beginTransition([first, tooLarge]);
 
-      expectBothTemporaryListenersRemoved(removeEventListener);
+      expectTemporaryListenerCounts(firstListeners, 0, 0);
+      expectTemporaryListenerCounts(tooLargeListeners, 0, 0);
     },
   );
 });
