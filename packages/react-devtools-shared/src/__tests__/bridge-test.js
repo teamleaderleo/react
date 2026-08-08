@@ -24,12 +24,10 @@ describe('Bridge', () => {
     const shutdownCallback = jest.fn();
     bridge.addListener('shutdown', shutdownCallback);
 
-    // Check that we're wired up correctly.
     bridge.send('reloadAppForProfiling');
     jest.runAllTimers();
     expect(wall.send).toHaveBeenCalledWith('reloadAppForProfiling', undefined);
 
-    // Should flush pending messages and then shut down.
     wall.send.mockClear();
     bridge.send('update', '1');
     bridge.send('update', '2');
@@ -40,7 +38,6 @@ describe('Bridge', () => {
     expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
     expect(shutdownCallback).toHaveBeenCalledTimes(1);
 
-    // Using a Bridge after shutdown is a lifecycle error.
     wall.send.mockClear();
     expect(() => bridge.send('should not send')).toThrow(
       'Cannot send a message through a Bridge that has been shut down.',
@@ -79,7 +76,6 @@ describe('Bridge', () => {
       wallListener(message);
     };
 
-    // Walls may share their transport with unrelated or legacy messages.
     dispatch(null);
     dispatch({type: 'event'});
     expect(listener).not.toHaveBeenCalled();
@@ -120,6 +116,69 @@ describe('Bridge', () => {
     bridge.send('update', 'value');
     expect(() => bridge.shutdown()).toThrow(expectedError);
     expect(wall.send).toHaveBeenCalledWith('update', 'value');
+    expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
+  });
+
+  // @reactVersion >=16.0
+  it('finishes shutting down when a shutdown listener throws', () => {
+    const expectedError = new Error('Failed during shutdown listener');
+    const wallUnlisten = jest.fn();
+    const wall = {
+      listen: jest.fn(() => wallUnlisten),
+      send: jest.fn(),
+    };
+    const bridge = new Bridge(wall);
+
+    bridge.addListener('shutdown', () => {
+      throw expectedError;
+    });
+    bridge.send('update', 'value');
+
+    expect(() => bridge.shutdown()).toThrow(expectedError);
+
+    expect(wallUnlisten).toHaveBeenCalledTimes(1);
+    expect(wall.send).toHaveBeenCalledWith('update', 'value');
+    expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
+    expect(() => bridge.send('should not send')).toThrow(
+      'Cannot send a message through a Bridge that has been shut down.',
+    );
+    expect(() => bridge.addListener('event', () => {})).toThrow(
+      'Cannot add a listener through a Bridge that has been shut down.',
+    );
+    expect(() => bridge.shutdown()).toThrow(
+      'Cannot shut down through a Bridge that has been shut down.',
+    );
+  });
+
+  // @reactVersion >=16.0
+  it('does not run a second shutdown cycle from a shutdown listener', () => {
+    const wallUnlisten = jest.fn();
+    const wall = {
+      listen: jest.fn(() => wallUnlisten),
+      send: jest.fn(),
+    };
+    const bridge = new Bridge(wall);
+    let shutdownListenerCalls = 0;
+    let nestedShutdownError = null;
+
+    bridge.addListener('shutdown', () => {
+      shutdownListenerCalls++;
+      if (shutdownListenerCalls === 1) {
+        try {
+          bridge.shutdown();
+        } catch (error) {
+          nestedShutdownError = error;
+        }
+      }
+    });
+
+    bridge.shutdown();
+
+    expect(shutdownListenerCalls).toBe(1);
+    expect(nestedShutdownError).not.toBe(null);
+    expect(nestedShutdownError.message).toContain('shut down');
+    expect(wallUnlisten).toHaveBeenCalledTimes(1);
+    expect(wall.send).toHaveBeenCalledTimes(1);
     expect(wall.send).toHaveBeenCalledWith('shutdown', undefined);
   });
 });
