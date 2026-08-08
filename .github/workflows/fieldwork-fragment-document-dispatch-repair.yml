@@ -1,0 +1,114 @@
+name: Fieldwork Fragment document dispatch repair
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'repair/fragment-document-dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: repair/fragment-document-dispatch
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+
+      - name: Materialize Document-safe synthetic dispatch target
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main research/fragment-document-dispatch
+          git branch -f main origin/main
+          git checkout origin/research/fragment-document-dispatch -- packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocumentDispatch-test.js
+          python3 <<'PY'
+          from pathlib import Path
+
+          source = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = source.read_text()
+          old = "    const temp = document.createTextNode('');"
+          new = """    const temp =
+      parentHostInstance.nodeType === DOCUMENT_NODE
+        ? (parentHostInstance as Document).createComment('')
+        : document.createTextNode('');"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one synthetic text target, found {text.count(old)}')
+          source.write_text(text.replace(old, new, 1))
+
+          test = Path('packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocumentDispatch-test.js')
+          text = test.read_text()
+          old = """    const fragmentListener = jest.fn();
+    const documentListener = jest.fn();
+    fragmentRef.current.addEventListener('custom', fragmentListener);
+    document.addEventListener('custom', documentListener);
+
+    const result = fragmentRef.current.dispatchEvent(
+      new Event('custom', {bubbles: true, cancelable: true}),
+    );
+
+    expect(result).toBe(true);
+    expect(fragmentListener).toHaveBeenCalledTimes(1);
+    expect(documentListener).toHaveBeenCalledTimes(1);"""
+          new = """    const fragmentListener = jest.fn();
+    const documentListener = jest.fn();
+    fragmentRef.current.addEventListener('custom', fragmentListener);
+    document.addEventListener('custom', documentListener);
+    const childCountBeforeDispatch = document.childNodes.length;
+
+    const result = fragmentRef.current.dispatchEvent(
+      new Event('custom', {bubbles: true, cancelable: true}),
+    );
+
+    expect(result).toBe(true);
+    expect(fragmentListener).toHaveBeenCalledTimes(1);
+    expect(documentListener).toHaveBeenCalledTimes(1);
+    expect(document.childNodes.length).toBe(childCountBeforeDispatch);
+
+    const preventingListener = jest.fn(event => event.preventDefault());
+    fragmentRef.current.addEventListener('prevented', preventingListener);
+    const prevented = fragmentRef.current.dispatchEvent(
+      new Event('prevented', {bubbles: true, cancelable: true}),
+    );
+    expect(prevented).toBe(false);
+    expect(preventingListener).toHaveBeenCalledTimes(1);
+    expect(document.childNodes.length).toBe(childCountBeforeDispatch);"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one document dispatch assertion block, found {text.count(old)}')
+          test.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Focused DEV controls
+        run: yarn test --dev ReactDOMFragmentRefsDocumentDispatch-test ReactDOMFragmentRefs-test --runInBand
+
+      - name: Focused PROD controls
+        run: yarn test --prod ReactDOMFragmentRefsDocumentDispatch-test ReactDOMFragmentRefs-test --runInBand
+
+      - name: Lint changed source
+        run: yarn linc
+
+      - name: Publish workflow-free two-file packet
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .fieldwork-fragment-document-dispatch-repair
+          rm -f .github/workflows/fieldwork-fragment-document-dispatch-repair.yml
+          git diff --check
+          git config user.name 'fieldwork-bot'
+          git config user.email 'fieldwork-bot@users.noreply.github.com'
+          git add packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
+                  packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocumentDispatch-test.js \
+                  .fieldwork-fragment-document-dispatch-repair \
+                  .github/workflows/fieldwork-fragment-document-dispatch-repair.yml
+          git commit -m 'Fix Fragment event dispatch for Document parents'
+          git push origin HEAD:repair/fragment-document-dispatch
