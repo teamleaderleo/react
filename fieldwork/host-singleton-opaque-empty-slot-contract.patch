@@ -1,0 +1,82 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -369,6 +369,80 @@ describe('ReactDOM HostSingleton', () => {
+     expect(body.innerHTML).toBe('<span>managed HTML</span>');
+   });
+ 
++  it(
++    'keeps the empty direct HTML slot before a later outside node when becoming managed',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: ''}} />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'after-empty-slot');
++      externalStyle.textContent = '.after-empty-slot { color: teal; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++          <body>
++            <span id="managed-empty-slot">managed</span>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
++
++      const managed = document.getElementById('managed-empty-slot');
++      expect(managed).not.toBe(null);
++      expect(Array.from(body.childNodes)).toEqual([managed, externalStyle]);
++    },
++  );
++
++  it(
++    'keeps the empty direct HTML slot before a later outside node when becoming nonempty',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <html>
++          <head />
++          <body dangerouslySetInnerHTML={{__html: ''}} />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const externalStyle = document.createElement('style');
++      externalStyle.setAttribute('data-outside-style', 'after-empty-opaque');
++      externalStyle.textContent = '.after-empty-opaque { color: olive; }';
++      body.appendChild(externalStyle);
++
++      root.render(
++        <html>
++          <head />
++          <body
++            dangerouslySetInnerHTML={{
++              __html: '<span id="opaque-empty-slot">opaque</span>',
++            }}
++          />
++        </html>,
++      );
++      await waitForAll([]);
++
++      const opaque = document.getElementById('opaque-empty-slot');
++      expect(opaque).not.toBe(null);
++      expect(Array.from(body.childNodes)).toEqual([opaque, externalStyle]);
++    },
++  );
++
+   // @gate TODO
+   it('replaces dangerouslySetInnerHTML with singleton children', async () => {
+     const root = ReactDOMClient.createRoot(document);
