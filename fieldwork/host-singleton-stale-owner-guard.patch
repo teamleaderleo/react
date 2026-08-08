@@ -1,0 +1,37 @@
+diff --git a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js b/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+--- a/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
++++ b/packages/react-reconciler/src/ReactFiberCommitHostEffects.js
+@@ -53,3 +53,4 @@ import {
+   acquireSingletonInstance,
+   releaseSingletonInstance,
++  getInstanceFromNode,
+   isSingletonScope,
+@@ -67,4 +68,9 @@ import {
+   enableFragmentRefsTextNodes,
+ } from 'shared/ReactFeatureFlags';
+ 
++function isCurrentHostSingletonOwner(fiber: Fiber): boolean {
++  const owner = getInstanceFromNode(fiber.stateNode);
++  return owner === fiber || owner === fiber.alternate;
++}
++
+ export function commitHostMount(finishedWork: Fiber) {
+@@ -110,4 +116,12 @@ export function commitHostUpdate(
+   newProps: any,
+   oldProps: any,
+ ): void {
++  if (
++    supportsSingletons &&
++    finishedWork.tag === HostSingleton &&
++    !isCurrentHostSingletonOwner(finishedWork)
++  ) {
++    return;
++  }
++
+   try {
+@@ -846,2 +860,6 @@ export function commitHostSingletonRelease(releasingWork: Fiber) {
++  if (!isCurrentHostSingletonOwner(releasingWork)) {
++    return;
++  }
++
+   if (__DEV__) {
