@@ -118,7 +118,11 @@ describe('DevTools backend manager pagehide shutdown', () => {
         ['backend-b', createBackend('backend-b', shutdowns, null)],
       ]),
     );
-    window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = hook;
+    delete window.__REACT_DEVTOOLS_GLOBAL_HOOK__;
+    Object.defineProperty(window, '__REACT_DEVTOOLS_GLOBAL_HOOK__', {
+      configurable: true,
+      value: hook,
+    });
 
     const reportedErrors = [];
     const onError = event => {
