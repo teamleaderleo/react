@@ -61,8 +61,8 @@ describe('FragmentRefs event registry', () => {
     fragmentRef.current.addEventListener('click', registeredListener);
     fragmentRef.current.removeEventListener('click', unknownListener);
 
-    // Removing an unknown listener is a DOM no-op, so the already-mounted child
-    // still has the registered listener even if Fragment bookkeeping is corrupt.
+    // The current child still has the registered listener even if retained
+    // Fragment bookkeeping was corrupted. A newly added child exposes the bug.
     document.getElementById('first').click();
     expect(calls).toEqual(['first']);
 
@@ -79,13 +79,14 @@ describe('FragmentRefs event registry', () => {
     const fragmentRef = React.createRef();
     const childRef = React.createRef();
     const root = ReactDOMClient.createRoot(container);
-    const calls = [];
+    let directCalls = 0;
+    let fragmentCalls = 0;
 
     function directListener() {
-      calls.push('direct');
+      directCalls++;
     }
     function fragmentListener() {
-      calls.push('fragment');
+      fragmentCalls++;
     }
 
     await act(() => {
@@ -102,7 +103,8 @@ describe('FragmentRefs event registry', () => {
     fragmentRef.current.removeEventListener('click', directListener);
     childRef.current.click();
 
-    expect(calls).toEqual(['direct', 'fragment']);
+    expect(directCalls).toBe(1);
+    expect(fragmentCalls).toBe(1);
   });
 
   // @gate enableFragmentRefs
