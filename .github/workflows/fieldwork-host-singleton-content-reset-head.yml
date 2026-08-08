@@ -144,6 +144,7 @@ jobs:
         run: |
           git diff --name-only | sort > /tmp/actual-files
           printf '%s\n' \
+            packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
             packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
             packages/react-reconciler/src/ReactFiberBeginWork.js \
             packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
@@ -154,9 +155,10 @@ jobs:
         run: |
           git config user.name "teamleaderleo-fieldwork"
           git config user.email "13091533+teamleaderleo@users.noreply.github.com"
-          git add packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
+          git add packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
+            packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js \
             packages/react-reconciler/src/ReactFiberBeginWork.js \
             packages/react-reconciler/src/ReactFiberCommitHostEffects.js \
             packages/react-reconciler/src/ReactFiberCommitWork.js
-          git commit -m "fix: reset singleton direct HTML before child effects"
+          git commit -m "fix: repair HostSingleton direct-content ownership"
           git push origin HEAD:repair/host-singleton-content-reset
