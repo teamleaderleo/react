@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,170 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,201 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -164,6 +164,29 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +
 +      expect(document.body).toBe(body);
 +      expect(body.contains(externalLink)).toBe(true);
++    },
++  );
++
++  it(
++    'preserves document singleton nodes when releasing unset html direct content',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const html = document.documentElement;
++      const head = document.head;
++      const body = document.body;
++      const undefinedHTML = undefined;
++
++      root.render(
++        <html dangerouslySetInnerHTML={{__html: undefinedHTML}} />,
++      );
++      await waitForAll([]);
++
++      root.render(null);
++      await waitForAll([]);
++
++      expect(document.documentElement).toBe(html);
++      expect(document.head).toBe(head);
++      expect(document.body).toBe(body);
 +    },
 +  );
 +
