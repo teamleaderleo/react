@@ -1,0 +1,29 @@
+name: Fieldwork DevTools welcome boundary red control
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-red-control:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'research/devtools-welcome-null-message'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/devtools-welcome-null-message
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Build React for DevTools tests
+        run: yarn build-for-devtools
+      - name: Focused DevTools welcome boundary
+        run: yarn test-build-devtools backendManagerWelcome --runInBand
