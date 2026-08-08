@@ -13,7 +13,6 @@ concurrency:
 
 env:
   TZ: /usr/share/zoneinfo/America/Los_Angeles
-  # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#cache-segment-restore-timeout
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
 
 jobs:
@@ -36,7 +35,89 @@ jobs:
         run: rm -rf build
       - run: yarn install --frozen-lockfile
         if: steps.node_modules.outputs.cache-hit != 'true'
-      - run: yarn prettier-check
+      - name: Require current source to reproduce Document dispatch failure
+        shell: bash
+        run: |
+          if yarn test --dev ReactDOMFragmentRefsDocumentDispatch-test --runInBand; then
+            echo "Current source unexpectedly passed the Document dispatch control."
+            exit 1
+          fi
+      - name: Apply Document-safe dispatch experiment and strengthen controls
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          source = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = source.read_text()
+          old = "    const temp = document.createTextNode('');"
+          new = """    const temp =
+      parentHostInstance.nodeType === DOCUMENT_NODE
+        ? (parentHostInstance as Document).createComment('')
+        : document.createTextNode('');"""
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one synthetic text target, found {text.count(old)}')
+          source.write_text(text.replace(old, new, 1))
+
+          test = Path('packages/react-dom/src/__tests__/ReactDOMFragmentRefsDocumentDispatch-test.js')
+          text = test.read_text()
+          old = """    const fragmentListener = jest.fn();
+    const documentListener = jest.fn();
+    fragmentRef.current.addEventListener('custom', fragmentListener);
+    document.addEventListener('custom', documentListener);
+
+    const result = fragmentRef.current.dispatchEvent(
+      new Event('custom', {bubbles: true, cancelable: true}),
+    );
+
+    expect(result).toBe(true);
+    expect(fragmentListener).toHaveBeenCalledTimes(1);
+    expect(documentListener).toHaveBeenCalledTimes(1);"""
+          new = """    const fragmentListener = jest.fn();
+    const documentListener = jest.fn();
+    fragmentRef.current.addEventListener('custom', fragmentListener);
+    document.addEventListener('custom', documentListener);
+    const childCountBeforeDispatch = document.childNodes.length;
+
+    const result = fragmentRef.current.dispatchEvent(
+      new Event('custom', {bubbles: true, cancelable: true}),
+    );
+
+    expect(result).toBe(true);
+    expect(fragmentListener).toHaveBeenCalledTimes(1);
+    expect(documentListener).toHaveBeenCalledTimes(1);
+    expect(document.childNodes.length).toBe(childCountBeforeDispatch);
+
+    const preventingListener = jest.fn(event => event.preventDefault());
+    fragmentRef.current.addEventListener('prevented', preventingListener);
+    const prevented = fragmentRef.current.dispatchEvent(
+      new Event('prevented', {bubbles: true, cancelable: true}),
+    );
+    expect(prevented).toBe(false);
+    expect(preventingListener).toHaveBeenCalledTimes(1);
+    expect(document.childNodes.length).toBe(childCountBeforeDispatch);"""
+          if text.count(old) != 1:
+              raise SystemExit('expected one Document dispatch assertion block')
+          test.write_text(text.replace(old, new, 1))
+          PY
+      - name: Focused development controls
+        run: >-
+          yarn test --dev
+          ReactDOMFragmentRefsDocumentDispatch-test
+          ReactDOMFragmentRefs-test
+          --runInBand
+      - name: Focused production controls
+        run: >-
+          yarn test --prod
+          ReactDOMFragmentRefsDocumentDispatch-test
+          ReactDOMFragmentRefs-test
+          --runInBand
+      - name: DOM Flow
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Formatter
+        run: yarn prettier-check
 
   eslint:
     name: Run eslint
@@ -47,7 +128,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
       - name: Restore cached node_modules
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         id: node_modules
         with:
           path: |
