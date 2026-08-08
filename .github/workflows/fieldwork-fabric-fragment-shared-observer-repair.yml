@@ -1,0 +1,280 @@
+name: Fieldwork Fabric shared observer repair
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-fabric-shared-observer-repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Require current Fabric implementation to reproduce shared-owner cancellation
+        shell: bash
+        run: |
+          if yarn test --dev ReactFabricFragmentRefsSharedObserver-test; then
+            echo "Current Fabric source unexpectedly passed the shared-owner control."
+            exit 1
+          fi
+      - name: Apply Fabric ownership experiment
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/react-native-renderer/src/ReactFiberConfigFabric.js')
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              """export type FragmentInstanceType = {
+  _fragmentFiber: Fiber,
+  _observers: null | Set<IntersectionObserver>,""",
+              """export type FragmentInstanceType = {
+  _fragmentFiber: Fiber,
+  _observers: null | Set<IntersectionObserver>,
+  _observerTargets: null | Map<IntersectionObserver, Set<PublicInstance>>,""",
+          )
+
+          replace_once(
+              """function FragmentInstance(this: FragmentInstanceType, fragmentFiber: Fiber) {
+  this._fragmentFiber = fragmentFiber;
+  this._observers = null;
+}
+""",
+              """function FragmentInstance(this: FragmentInstanceType, fragmentFiber: Fiber) {
+  this._fragmentFiber = fragmentFiber;
+  this._observers = null;
+  this._observerTargets = null;
+}
+
+const fragmentObserverTargetOwners: WeakMap<
+  IntersectionObserver,
+  WeakMap<Object, number>,
+> = new WeakMap();
+
+function acquireFragmentObserverTarget(
+  fragmentInstance: FragmentInstanceType,
+  observer: IntersectionObserver,
+  publicInstance: PublicInstance,
+): void {
+  let observerTargets = fragmentInstance._observerTargets;
+  if (observerTargets === null) {
+    observerTargets = new Map();
+    fragmentInstance._observerTargets = observerTargets;
+  }
+  let targets = observerTargets.get(observer);
+  if (targets === undefined) {
+    targets = new Set();
+    observerTargets.set(observer, targets);
+  }
+
+  if (!targets.has(publicInstance)) {
+    targets.add(publicInstance);
+    let targetOwners = fragmentObserverTargetOwners.get(observer);
+    if (targetOwners === undefined) {
+      targetOwners = new WeakMap();
+      fragmentObserverTargetOwners.set(observer, targetOwners);
+    }
+    const ownerCount = targetOwners.get(publicInstance) || 0;
+    targetOwners.set(publicInstance, ownerCount + 1);
+  }
+
+  observer.observe(publicInstance);
+}
+
+function releaseFragmentObserverTarget(
+  fragmentInstance: FragmentInstanceType,
+  observer: IntersectionObserver,
+  publicInstance: PublicInstance,
+  unobserveWhenLastOwner: boolean,
+): void {
+  const observerTargets = fragmentInstance._observerTargets;
+  if (observerTargets === null) {
+    return;
+  }
+  const targets = observerTargets.get(observer);
+  if (targets === undefined || !targets.delete(publicInstance)) {
+    return;
+  }
+  if (targets.size === 0) {
+    observerTargets.delete(observer);
+  }
+
+  const targetOwners = fragmentObserverTargetOwners.get(observer);
+  if (targetOwners === undefined) {
+    return;
+  }
+  const ownerCount = targetOwners.get(publicInstance);
+  if (ownerCount === undefined) {
+    return;
+  }
+  if (ownerCount === 1) {
+    targetOwners.delete(publicInstance);
+    if (unobserveWhenLastOwner) {
+      observer.unobserve(publicInstance);
+    }
+  } else {
+    targetOwners.set(publicInstance, ownerCount - 1);
+  }
+}
+""",
+          )
+
+          replace_once(
+              """  traverseFragmentInstancesAndTextInstances(
+    this._fragmentFiber,
+    observeChild,
+    observer,
+  );
+};
+function observeChild(child: Fiber, observer: IntersectionObserver) {
+  // $FlowFixMe[incompatible-type]
+  const publicInstance = getPublicInstanceFromHostFiber(child);
+  // $FlowFixMe[incompatible-type] DOM types expect Element
+  observer.observe(publicInstance);
+  return false;
+}""",
+              """  traverseFragmentInstancesAndTextInstances(
+    this._fragmentFiber,
+    observeChild,
+    this,
+    observer,
+  );
+};
+function observeChild(
+  child: Fiber,
+  fragmentInstance: FragmentInstanceType,
+  observer: IntersectionObserver,
+) {
+  // $FlowFixMe[incompatible-type]
+  const publicInstance = getPublicInstanceFromHostFiber(child);
+  // $FlowFixMe[incompatible-type] DOM types expect Element
+  acquireFragmentObserverTarget(fragmentInstance, observer, publicInstance);
+  return false;
+}""",
+          )
+
+          replace_once(
+              """    traverseFragmentInstancesAndTextInstances(
+      this._fragmentFiber,
+      unobserveChild,
+      observer,
+    );
+  }
+};
+function unobserveChild(child: Fiber, observer: IntersectionObserver) {
+  // $FlowFixMe[incompatible-type]
+  const publicInstance = getPublicInstanceFromHostFiber(child);
+  // $FlowFixMe[incompatible-type] DOM types expect Element
+  observer.unobserve(publicInstance);
+  return false;
+}""",
+              """    traverseFragmentInstancesAndTextInstances(
+      this._fragmentFiber,
+      unobserveChild,
+      this,
+      observer,
+    );
+  }
+};
+function unobserveChild(
+  child: Fiber,
+  fragmentInstance: FragmentInstanceType,
+  observer: IntersectionObserver,
+) {
+  // $FlowFixMe[incompatible-type]
+  const publicInstance = getPublicInstanceFromHostFiber(child);
+  // $FlowFixMe[incompatible-type] DOM types expect Element
+  releaseFragmentObserverTarget(
+    fragmentInstance,
+    observer,
+    publicInstance,
+    true,
+  );
+  return false;
+}""",
+          )
+
+          replace_once(
+              """    // $FlowFixMe[incompatible-type]
+    fragmentInstance._observers.forEach(observer => {
+      // $FlowFixMe[incompatible-type] Element types are behind a flag in RN
+      observer.observe(publicInstance);
+    });""",
+              """    // $FlowFixMe[incompatible-type]
+    fragmentInstance._observers.forEach(observer => {
+      // $FlowFixMe[incompatible-type] Element types are behind a flag in RN
+      acquireFragmentObserverTarget(fragmentInstance, observer, publicInstance);
+    });""",
+          )
+
+          replace_once(
+              """export function deleteChildFromFragmentInstance(
+  childInstance: Instance | TextInstance,
+  fragmentInstance: FragmentInstanceType,
+  _releaseObserverOwnership: boolean,
+): void {""",
+              """export function deleteChildFromFragmentInstance(
+  childInstance: Instance | TextInstance,
+  fragmentInstance: FragmentInstanceType,
+  releaseObserverOwnership: boolean,
+): void {""",
+          )
+
+          replace_once(
+              """  const publicInstance = getPublicInstance(
+    instance,
+  ) as any as PublicInstanceWithFragmentHandles;
+  if (enableFragmentRefsInstanceHandles) {""",
+              """  const publicInstance = getPublicInstance(
+    instance,
+  ) as any as PublicInstanceWithFragmentHandles;
+  if (
+    releaseObserverOwnership &&
+    publicInstance != null &&
+    fragmentInstance._observers !== null
+  ) {
+    fragmentInstance._observers.forEach(observer => {
+      releaseFragmentObserverTarget(
+        fragmentInstance,
+        observer,
+        publicInstance,
+        false,
+      );
+    });
+  }
+  if (enableFragmentRefsInstanceHandles) {""",
+          )
+
+          path.write_text(text)
+          PY
+      - name: Run focused Fabric shared-owner control with repair
+        run: yarn test --dev ReactFabricFragmentRefsSharedObserver-test
+      - name: Flow Fabric
+        run: yarn flow fabric
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Format check
+        run: >-
+          yarn prettier
+          packages/react-native-renderer/src/ReactFiberConfigFabric.js
+          packages/react-native-renderer/src/__tests__/ReactFabricFragmentRefsSharedObserver-test.internal.js
+          --check
