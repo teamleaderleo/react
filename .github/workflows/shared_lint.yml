@@ -13,7 +13,6 @@ concurrency:
 
 env:
   TZ: /usr/share/zoneinfo/America/Los_Angeles
-  # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#cache-segment-restore-timeout
   SEGMENT_DOWNLOAD_TIMEOUT_MINS: 1
 
 jobs:
@@ -36,7 +35,188 @@ jobs:
         run: rm -rf build
       - run: yarn install --frozen-lockfile
         if: steps.node_modules.outputs.cache-hit != 'true'
-      - run: yarn prettier-check
+      - name: Shim direct DOM host config tests
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          for filename in [
+              'packages/react-dom/src/__tests__/ReactDOMStylesheetPreloadListenerOwnership-test.js',
+              'packages/react-dom/src/__tests__/ReactDOMSuspendedCommitTimerCleanup-test.js',
+          ]:
+              path = Path(filename)
+              text = path.read_text()
+              anchor = "'use strict';\n"
+              shim = """
+
+jest.mock('react-reconciler/src/ReactFiberHostContext', () => ({
+  getCurrentRootHostContainer: () => document,
+}));
+"""
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'{filename}: expected one use strict anchor')
+              path.write_text(text.replace(anchor, anchor + shim, 1))
+          PY
+      - name: Require current source to reproduce both ownership failures
+        shell: bash
+        run: |
+          set +e
+          yarn test --dev ReactDOMStylesheetPreloadListenerOwnership-test --runInBand
+          stylesheet_status=$?
+          yarn test --dev ReactDOMSuspendedCommitTimerCleanup-test --runInBand
+          timer_status=$?
+          set -e
+          if [ "$stylesheet_status" -eq 0 ]; then
+            echo "Stylesheet ownership control unexpectedly passed current source."
+            exit 1
+          fi
+          if [ "$timer_status" -eq 0 ]; then
+            echo "Timer ownership control unexpectedly passed current source."
+            exit 1
+          fi
+      - name: Apply combined commit-local cleanup experiment
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              """  waitingForViewTransition: boolean,
+  unsuspend: null | (() => void),
+};""",
+              """  waitingForViewTransition: boolean,
+  unsuspend: null | (() => void),
+  cleanups: Array<() => void>,
+};""",
+          )
+          replace_once(
+              """    waitingForViewTransition: false,
+    // We use a noop function when we begin suspending because if possible we want the
+    // waitfor step to finish synchronously. If it doesn't we'll return a function to
+    // provide the actual unsuspend function and that will get completed when the count
+    // hits zero or it will get cancelled if the root starts new work.
+    unsuspend: noop,
+  };""",
+              """    waitingForViewTransition: false,
+    // We use a noop function when we begin suspending because if possible we want the
+    // waitfor step to finish synchronously. If it doesn't we'll return a function to
+    // provide the actual unsuspend function and that will get completed when the count
+    // hits zero or it will get cancelled if the root starts new work.
+    unsuspend: noop,
+    cleanups: [],
+  };""",
+          )
+          replace_once(
+              """export function suspendResource(
+  state: SuspendedState,
+  hoistableRoot: HoistableRoot,
+  resource: Resource,
+  props: any,
+): void {""",
+              """function addSuspendedCommitStylesheetListener(
+  state: SuspendedState,
+  target: HTMLLinkElement,
+): void {
+  state.count++;
+  let active = true;
+  function cleanup(): void {
+    if (!active) {
+      return;
+    }
+    active = false;
+    target.removeEventListener('load', ping);
+    target.removeEventListener('error', ping);
+  }
+  function ping(): void {
+    cleanup();
+    onUnsuspend.call(state);
+  }
+  state.cleanups.push(cleanup);
+  target.addEventListener('load', ping);
+  target.addEventListener('error', ping);
+}
+
+export function suspendResource(
+  state: SuspendedState,
+  hoistableRoot: HoistableRoot,
+  resource: Resource,
+  props: any,
+): void {""",
+          )
+          replace_once(
+              """      if (preloadEl && (resource.state.loading & Settled) === NotLoaded) {
+        state.count++;
+        const ping = onUnsuspend.bind(state);
+        preloadEl.addEventListener('load', ping);
+        preloadEl.addEventListener('error', ping);
+      }""",
+              """      if (preloadEl && (resource.state.loading & Settled) === NotLoaded) {
+        addSuspendedCommitStylesheetListener(state, preloadEl);
+      }""",
+          )
+          replace_once(
+              """      state.unsuspend = commit;
+
+      return () => {
+        state.unsuspend = null;
+        clearTimeout(stylesheetTimer);
+        clearTimeout(imgTimer);
+      };""",
+              """      let settled = false;
+      const cleanup = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        state.unsuspend = null;
+        clearTimeout(stylesheetTimer);
+        clearTimeout(imgTimer);
+        const cleanups = state.cleanups;
+        state.cleanups = [];
+        for (let i = 0; i < cleanups.length; i++) {
+          cleanups[i]();
+        }
+      };
+      state.unsuspend = () => {
+        if (settled) {
+          return;
+        }
+        cleanup();
+        commit();
+      };
+
+      return cleanup;""",
+          )
+          replace_once(
+              """  this.count++;
+  const onComplete = onUnsuspend.bind(this);
+  instance.addEventListener('load', onComplete);
+  instance.addEventListener('error', onComplete);""",
+              """  addSuspendedCommitStylesheetListener(this, instance);""",
+          )
+
+          path.write_text(text)
+          PY
+      - name: Require combined repair to reverse stylesheet ownership controls
+        run: yarn test --dev ReactDOMStylesheetPreloadListenerOwnership-test --runInBand
+      - name: Require combined repair to reverse timer ownership controls
+        run: yarn test --dev ReactDOMSuspendedCommitTimerCleanup-test --runInBand
+      - name: DOM Flow
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Formatter
+        run: yarn prettier-check
 
   eslint:
     name: Run eslint
@@ -47,7 +227,7 @@ jobs:
         with:
           node-version-file: '.nvmrc'
       - name: Restore cached node_modules
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         id: node_modules
         with:
           path: |
