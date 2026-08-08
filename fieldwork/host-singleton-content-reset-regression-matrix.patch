@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
-@@ -402,6 +402,244 @@ describe('ReactDOM HostSingleton', () => {
+@@ -402,6 +402,248 @@ describe('ReactDOM HostSingleton', () => {
      expect(body.innerHTML).toBe('<span>managed child</span>');
    });
  
@@ -58,123 +58,134 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +    expect(body.querySelector('div')).toBe(null);
 +  });
 +
-+  it('replaces hydrated direct HTML with managed singleton children', async () => {
-+    const serverHTML = '<div id="server-managed">server</div>';
++  it(
++    'replaces hydrated direct HTML with managed singleton children',
++    async () => {
++      const serverHTML = '<div id="server-managed">server</div>';
 +
-+    await actIntoEmptyDocument(() => {
-+      const {pipe} = ReactDOMFizzServer.renderToPipeableStream(
++      await actIntoEmptyDocument(() => {
++        const {pipe} = ReactDOMFizzServer.renderToPipeableStream(
++          <html>
++            <head />
++            <body dangerouslySetInnerHTML={{__html: serverHTML}} />
++          </html>,
++        );
++        pipe(writable);
++      });
++
++      const body = document.body;
++      expect(document.getElementById('server-managed')).not.toBe(null);
++      const root = ReactDOMClient.hydrateRoot(
++        document,
 +        <html>
 +          <head />
 +          <body dangerouslySetInnerHTML={{__html: serverHTML}} />
 +        </html>,
 +      );
-+      pipe(writable);
-+    });
++      await waitForAll([]);
 +
-+    const body = document.body;
-+    expect(document.getElementById('server-managed')).not.toBe(null);
-+    const root = ReactDOMClient.hydrateRoot(
-+      document,
-+      <html>
-+        <head />
-+        <body dangerouslySetInnerHTML={{__html: serverHTML}} />
-+      </html>,
-+    );
-+    await waitForAll([]);
-+
-+    root.render(
-+      <html>
-+        <head />
-+        <body>
-+          <span id="client-managed">client</span>
-+        </body>
-+      </html>,
-+    );
-+    await waitForAll([]);
-+
-+    expect(document.body).toBe(body);
-+    expect(document.getElementById('server-managed')).toBe(null);
-+    expect(body.innerHTML).toBe(
-+      '<span id="client-managed">client</span>',
-+    );
-+  });
-+
-+  it('preserves external body siblings when replacing text with children', async () => {
-+    const root = ReactDOMClient.createRoot(document);
-+    const body = document.body;
-+
-+    root.render(
-+      <html>
-+        <head />
-+        <body>managed text</body>
-+      </html>,
-+    );
-+    await waitForAll([]);
-+
-+    const externalLink = document.createElement('link');
-+    externalLink.rel = 'stylesheet';
-+    externalLink.href = 'external.css';
-+    body.insertBefore(externalLink, body.firstChild);
-+
-+    root.render(
-+      <html>
-+        <head />
-+        <body>
-+          <div>managed child</div>
-+        </body>
-+      </html>,
-+    );
-+    await waitForAll([]);
-+
-+    expect(body.contains(externalLink)).toBe(true);
-+    expect(body.querySelector('div').textContent).toBe('managed child');
-+  });
-+
-+  it('does not reset a singleton again while its Activity is hidden', async () => {
-+    const root = ReactDOMClient.createRoot(document);
-+    const body = document.body;
-+
-+    root.render(
-+      <React.Activity mode="visible">
++      root.render(
 +        <html>
 +          <head />
-+          <body dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}} />
-+        </html>
-+      </React.Activity>,
-+    );
-+    await waitForAll([]);
++          <body>
++            <span id="client-managed">client</span>
++          </body>
++        </html>,
++      );
++      await waitForAll([]);
 +
-+    root.render(
-+      <React.Activity mode="hidden">
++      expect(document.body).toBe(body);
++      expect(document.getElementById('server-managed')).toBe(null);
++      expect(body.innerHTML).toBe('<span id="client-managed">client</span>');
++    },
++  );
++
++  it(
++    'preserves external body siblings when replacing text with children',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
 +        <html>
 +          <head />
-+          <body dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}} />
-+        </html>
-+      </React.Activity>,
-+    );
-+    await waitForAll([]);
-+    expect(body.textContent).toBe('');
++          <body>managed text</body>
++        </html>,
++      );
++      await waitForAll([]);
 +
-+    const externalLink = document.createElement('link');
-+    externalLink.rel = 'stylesheet';
-+    externalLink.href = 'external.css';
-+    body.appendChild(externalLink);
++      const externalLink = document.createElement('link');
++      externalLink.rel = 'stylesheet';
++      externalLink.href = 'external.css';
++      body.insertBefore(externalLink, body.firstChild);
 +
-+    root.render(
-+      <React.Activity mode="hidden">
++      root.render(
 +        <html>
 +          <head />
 +          <body>
 +            <div>managed child</div>
 +          </body>
-+        </html>
-+      </React.Activity>,
-+    );
-+    await waitForAll([]);
++        </html>,
++      );
++      await waitForAll([]);
 +
-+    expect(body.contains(externalLink)).toBe(true);
-+    expect(body.querySelector('div').textContent).toBe('managed child');
-+  });
++      expect(body.contains(externalLink)).toBe(true);
++      expect(body.querySelector('div').textContent).toBe('managed child');
++    },
++  );
++
++  it(
++    'does not reset a singleton again while its Activity is hidden',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body
++              dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}}
++            />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <React.Activity mode="hidden">
++          <html>
++            <head />
++            <body
++              dangerouslySetInnerHTML={{__html: '<div>managed old</div>'}}
++            />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++      expect(body.textContent).toBe('');
++
++      const externalLink = document.createElement('link');
++      externalLink.rel = 'stylesheet';
++      externalLink.href = 'external.css';
++      body.appendChild(externalLink);
++
++      root.render(
++        <React.Activity mode="hidden">
++          <html>
++            <head />
++            <body>
++              <div>managed child</div>
++            </body>
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      expect(body.contains(externalLink)).toBe(true);
++      expect(body.querySelector('div').textContent).toBe('managed child');
++    },
++  );
 +
 +  it(
 +    'preserves external children when releasing an unset dangerous HTML prop',
@@ -217,9 +228,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +      const body = document.body;
 +      const undefinedHTML = undefined;
 +
-+      root.render(
-+        <html dangerouslySetInnerHTML={{__html: undefinedHTML}} />,
-+      );
++      root.render(<html dangerouslySetInnerHTML={{__html: undefinedHTML}} />);
 +      await waitForAll([]);
 +
 +      root.render(null);
