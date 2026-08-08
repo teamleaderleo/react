@@ -1,0 +1,94 @@
+name: Fieldwork ViewTransition finished cleanup repair verifier
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  verify-repair:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'verify/view-transition-finished-cleanup-repair'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: verify/view-transition-finished-cleanup-repair
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Apply safe finished-cleanup helper
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js')
+          text = path.read_text()
+
+          import_anchor = "import ReactDOMSharedInternals from 'shared/ReactDOMSharedInternals';\n"
+          if text.count(import_anchor) != 1:
+              raise SystemExit('unexpected ReactDOMSharedInternals import shape')
+          text = text.replace(
+              import_anchor,
+              import_anchor + "import reportGlobalError from 'shared/reportGlobalError';\n",
+              1,
+          )
+
+          helper_anchor = "export function stopViewTransition(transition: RunningViewTransition) {\n"
+          helper = """function runWhenViewTransitionFinished(\n  transition: RunningViewTransition,\n  callback: () => void,\n): void {\n  const runCallback = () => {\n    try {\n      callback();\n    } catch (error) {\n      reportGlobalError(error);\n    }\n  };\n  transition.finished.then(runCallback, runCallback);\n}\n\n"""
+          if text.count(helper_anchor) != 1:
+              raise SystemExit('unexpected stopViewTransition anchor')
+          text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          old = 'transition.finished.finally('
+          count = text.count(old)
+          if count != 3:
+              raise SystemExit(f'expected exactly 3 finished.finally sites, found {count}')
+          text = text.replace(old, 'runWhenViewTransitionFinished(transition, ')
+          path.write_text(text)
+          PY
+      - name: Reverse focused ViewTransition controls in development
+        run: yarn test --dev ReactDOMViewTransitionFinishedCleanup-test --runInBand
+      - name: Reverse focused ViewTransition controls in production
+        run: yarn test --prod ReactDOMViewTransitionFinishedCleanup-test --runInBand
+      - name: Flow check
+        run: yarn flow dom-browser
+      - name: Diff hygiene
+        run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
+      - name: Prettier check
+        run: >-
+          yarn prettier
+          packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+          packages/react-dom/src/__tests__/ReactDOMViewTransitionFinishedCleanup-test.js
+          --check
+      - name: Publish clean source branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          packet=/tmp/view-transition-finished-cleanup.tar
+          tar -cf "$packet" \
+            packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
+            packages/react-dom/src/__tests__/ReactDOMViewTransitionFinishedCleanup-test.js
+
+          git fetch origin main
+          git checkout -B scratch/view-transition-finished-cleanup-source origin/main
+          tar -xf "$packet"
+
+          git config user.name "Fieldwork verifier"
+          git config user.email "fieldwork@users.noreply.github.com"
+          git add \
+            packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js \
+            packages/react-dom/src/__tests__/ReactDOMViewTransitionFinishedCleanup-test.js
+          git commit -m "Handle ViewTransition finished cleanup safely"
+          git push --force-with-lease origin HEAD:refs/heads/scratch/view-transition-finished-cleanup-source
