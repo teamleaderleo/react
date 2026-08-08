@@ -24,12 +24,12 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply candidate and body pressure test
+      - name: Apply candidate and body pressure tests
         run: |
           git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
           git apply fieldwork/host-singleton-second-review-body-external-style.patch
-      - name: Run focused body pressure tests
-        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="preserves an external style when"
+      - name: Run focused body ownership tests
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="external style when|managed style when"
 
   head-hoistable-pressure:
     runs-on: ubuntu-latest
