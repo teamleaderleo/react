@@ -1,0 +1,56 @@
+name: Fieldwork HostSingleton preamble body inner HTML stream
+
+on:
+  pull_request:
+    branches:
+      - research/host-singleton-preamble-ownership
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  body-inner-html-stream-experiment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight source and contract patches
+        run: |
+          git apply --check fieldwork/host-singleton-preamble-body-inner-html-stream-experiment.patch
+          git apply --check fieldwork/host-singleton-preamble-ownership-contract.patch
+          git apply --check fieldwork/host-singleton-preamble-opaque-content-contract.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply source and contract patches
+        run: |
+          git apply fieldwork/host-singleton-preamble-body-inner-html-stream-experiment.patch
+          git apply fieldwork/host-singleton-preamble-ownership-contract.patch
+          git apply fieldwork/host-singleton-preamble-opaque-content-contract.patch
+      - name: Validate existing Fizz body preamble behavior
+        run: >-
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="Can render a fallback <body> alongside a non-fallback head"
+      - name: Require opaque fallback preamble content to be cleaned by boundary takeover
+        run: >-
+          yarn test --dev ReactDOMFizzServer-test
+          --testNamePattern="clears opaque body content contributed by a discarded preamble boundary"
+      - name: Require attribute ownership to remain a separate unresolved lane
+        shell: bash
+        run: |
+          set -u
+          expect_experiment_failure() {
+            local pattern="$1"
+            if yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="$pattern"; then
+              echo "Attribute ownership unexpectedly passed; inspect before accepting this split."
+              exit 1
+            fi
+          }
+
+          expect_experiment_failure "preserves imperative attributes when clearing a preamble contribution"
+          expect_experiment_failure "clears only contributed style properties from a preamble contribution"
+      - name: Lint experiment
+        run: yarn linc
