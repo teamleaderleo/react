@@ -52,7 +52,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 diff --git a/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js b/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js
 --- a/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js
 +++ b/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.js
-@@ -92,6 +92,57 @@ describe('when Trusted Types are available in global object', () => {
+@@ -92,6 +92,65 @@ describe('when Trusted Types are available in global object', () => {
      }
    });
  
@@ -84,7 +84,9 @@ diff --git a/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.
 +      });
 +
 +      expect(document.body.innerHTML).toBe('<b>Hi</b>');
-+      expect(innerHTMLCalls).toEqual([[document.body, ttObject1]]);
++      expect(innerHTMLCalls.length).toBe(1);
++      expect(innerHTMLCalls[0][0].tagName).toBe('BODY');
++      expect(innerHTMLCalls[0][1]).toBe(ttObject1);
 +
 +      innerHTMLCalls.length = 0;
 +      await act(() => {
@@ -97,7 +99,9 @@ diff --git a/packages/react-dom/src/client/__tests__/trustedTypes-test.internal.
 +      });
 +
 +      expect(document.body.innerHTML).toBe('<b>Bye</b>');
-+      expect(innerHTMLCalls).toEqual([[document.body, ttObject2]]);
++      expect(innerHTMLCalls.length).toBe(1);
++      expect(innerHTMLCalls[0][0].tagName).toBe('BODY');
++      expect(innerHTMLCalls[0][1]).toBe(ttObject2);
 +
 +      await act(() => root.unmount());
 +    } finally {
