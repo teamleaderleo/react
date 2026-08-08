@@ -29,7 +29,7 @@ jobs:
           git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
           git apply fieldwork/host-singleton-second-review-body-external-style.patch
       - name: Run focused body ownership tests
-        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="external style when|managed style when"
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="external style|managed style"
 
   head-hoistable-pressure:
     runs-on: ubuntu-latest
