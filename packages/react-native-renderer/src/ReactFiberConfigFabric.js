@@ -491,7 +491,7 @@ export function cloneInstance(
   const updatePayload = diffAttributePayloads(
     oldProps,
     newProps,
-    instance.canonical.viewConfig.validAttributes,
+    viewConfig.validAttributes,
   );
   // TODO: If the event handlers have changed, we need to update the current props
   // in the commit phase but there is no host config hook to do it yet.
