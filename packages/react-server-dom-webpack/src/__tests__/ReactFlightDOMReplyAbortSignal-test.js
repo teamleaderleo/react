@@ -53,9 +53,8 @@ describe('ReactFlightDOMReply AbortSignal cleanup', () => {
     );
     expect(listeners.size).toBe(1);
 
-    const rejection = expect(bodyPromise).rejects.toBe(expectedError);
     rejectPending(expectedError);
-    await rejection;
+    await expect(bodyPromise).rejects.toBe(expectedError);
 
     expect(listeners.size).toBe(0);
   });
