@@ -1,0 +1,11 @@
+diff --git a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+--- a/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
++++ b/packages/react-dom-bindings/src/client/ReactFiberConfigDOM.js
+@@ -4890,5 +4890,7 @@ function clearSingletonPreambleContribution(instance: Instance): void {
+   while (attributes.length) {
+     instance.removeAttributeNode(attributes[0]);
+   }
+-  detachDeletedInstance(instance);
++  // This server contribution has no HostSingleton Fiber of its own to detach.
++  // Hydration may already have bound this persistent node to the client owner.
+ }
