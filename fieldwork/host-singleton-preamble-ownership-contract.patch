@@ -9,7 +9,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
    it('preserves imperative attributes when clearing a preamble contribution', async () => {
      const body = document.body;
      body.setAttribute('data-react-owned', 'true');
-@@ -445,7 +444,6 @@ describe('ReactDOM HostSingleton', () => {
+@@ -445,7 +444,7 @@ describe('ReactDOM HostSingleton', () => {
        document,
        <html>
          <head />
@@ -18,7 +18,7 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
            <React.Suspense fallback={null}>
              <span>client</span>
            </React.Suspense>
-@@ -458,7 +456,47 @@ describe('ReactDOM HostSingleton', () => {
+@@ -458,8 +457,76 @@ describe('ReactDOM HostSingleton', () => {
      await waitForAll([]);
  
      expect(body.textContent).toBe('client');
@@ -57,6 +57,39 @@ diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.j
 +      expect(body.textContent).toBe('client');
 +      expect(body.style.color).toBe('');
 +      expect(body.style.backgroundColor).toBe('blue');
++    },
++  );
++
++  it(
++    'keeps the current singleton event props after clearing a preamble contribution',
++    async () => {
++      const body = document.body;
++      const onBodyClick = jest.fn();
++      body.setAttribute('data-react-owned', 'true');
++      body.innerHTML = '<!--$--><!--body--><button id="server">server</button><!--/$-->';
++
++      ReactDOMClient.hydrateRoot(
++        document,
++        <html>
++          <head />
++          <body onClick={onBodyClick} suppressHydrationWarning={true}>
++            <React.Suspense fallback={null}>
++              <button id="client">client</button>
++            </React.Suspense>
++          </body>
++        </html>,
++        {
++          onRecoverableError() {},
++        },
++      );
++      await waitForAll([]);
++
++      const clientButton = document.getElementById('client');
++      expect(clientButton).not.toBe(null);
++      clientButton.dispatchEvent(
++        new document.defaultView.MouseEvent('click', {bubbles: true}),
++      );
++      expect(onBodyClick).toHaveBeenCalledTimes(1);
 +    },
 +  );
  
