@@ -17,6 +17,7 @@ let act;
 let document;
 let Fragment;
 
+// Mount the smallest valid Document-root Fragment used by every dispatch case.
 function createDocumentRoot() {
   const fragmentRef = React.createRef();
   const root = ReactDOMClient.createRoot(document);
