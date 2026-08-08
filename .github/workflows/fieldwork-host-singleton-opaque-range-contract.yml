@@ -18,6 +18,7 @@ jobs:
         run: |
           git apply --check fieldwork/host-singleton-opaque-range-contract.patch
           git apply --check fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
+          git apply --check fieldwork/host-singleton-body-scope-sibling-contract.patch
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -28,14 +29,15 @@ jobs:
         run: |
           git apply fieldwork/host-singleton-opaque-range-contract.patch
           git apply fieldwork/host-singleton-suspense-opaque-fallback-contract.patch
+          git apply fieldwork/host-singleton-body-scope-sibling-contract.patch
       - name: Validate singleton harness with existing passing behavior
         run: >-
           yarn test --dev ReactDOMSingletonComponents-test
           --testNamePattern="updates dangerouslySetInnerHTML on a singleton"
-      - name: Validate Suspense document harness with existing passing behavior
+      - name: Validate document-placement harness with existing passing behavior
         run: >-
           yarn test --dev ReactDOM-test
-          --testNamePattern="can render a Suspense boundary above the <html> tag"
+          --testNamePattern="should render root host components into body scope when the container is a Document|can render a Suspense boundary above the <html> tag"
       - name: Validate changed test files
         run: yarn linc
       - name: Require current source to reproduce direct-content ownership gaps
@@ -58,13 +60,19 @@ jobs:
           expect_current_failure "preserves later outside body style when releasing empty direct HTML"
           expect_current_failure "removes opaque owned style while preserving outside style"
           expect_current_failure "preserves outside body style added before hydrating opaque HTML"
-      - name: Require current source to reproduce opaque Suspense fallback gap
+      - name: Require current source to reproduce document-owner ownership gaps
         shell: bash
         run: |
           set -u
-          pattern="preserves primary document children across an opaque body fallback"
-          echo "Expecting untouched current source to fail: $pattern"
-          if yarn test --dev ReactDOM-test --testNamePattern="$pattern"; then
-            echo "Unexpected pass for current-source Suspense ownership control: $pattern"
-            exit 1
-          fi
+          expect_current_failure() {
+            local pattern="$1"
+            echo "Expecting untouched current source to fail: $pattern"
+            if yarn test --dev ReactDOM-test --testNamePattern="$pattern"; then
+              echo "Unexpected pass for current-source document ownership control: $pattern"
+              exit 1
+            fi
+          }
+
+          expect_current_failure "preserves primary document children across an opaque body fallback"
+          expect_current_failure "keeps body direct HTML ordered between root body-scope siblings"
+          expect_current_failure "keeps managed body children ordered when the body slot becomes opaque"
