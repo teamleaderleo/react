@@ -37,9 +37,9 @@ describe('FragmentRefs HostSingleton observer ownership', () => {
   });
 
   // @gate enableFragmentRefs
-  it('does not unobserve a singleton still owned by another Fragment', async () => {
-    const hiddenFragmentRef = React.createRef();
-    const visibleFragmentRef = React.createRef();
+  it('does not unobserve a singleton retained by another hidden Fragment', async () => {
+    const fragmentARef = React.createRef();
+    const fragmentBRef = React.createRef();
     const root = ReactDOMClient.createRoot(document);
     const activeTargets = new Set();
     const observer = {
@@ -50,7 +50,7 @@ describe('FragmentRefs HostSingleton observer ownership', () => {
     await act(() => {
       root.render(
         <Activity mode="visible">
-          <Fragment ref={hiddenFragmentRef}>
+          <Fragment ref={fragmentARef}>
             <html>
               <head />
               <body />
@@ -59,46 +59,75 @@ describe('FragmentRefs HostSingleton observer ownership', () => {
         </Activity>,
       );
     });
-    hiddenFragmentRef.current.observeUsing(observer);
+    fragmentARef.current.observeUsing(observer);
     expect(activeTargets.has(document.documentElement)).toBe(true);
 
     await act(() => {
       root.render(
         <>
           <Activity mode="hidden">
-            <Fragment ref={hiddenFragmentRef}>
+            <Fragment ref={fragmentARef}>
               <html>
                 <head />
                 <body />
               </html>
             </Fragment>
           </Activity>
-          <Fragment ref={visibleFragmentRef}>
+          <Activity mode="visible">
+            <Fragment ref={fragmentBRef}>
+              <html>
+                <head />
+                <body />
+              </html>
+            </Fragment>
+          </Activity>
+        </>,
+      );
+    });
+    fragmentBRef.current.observeUsing(observer);
+    expect(activeTargets.has(document.documentElement)).toBe(true);
+
+    // Disappearing an Activity deliberately keeps its Fragment observers
+    // attached even though its DOM Fragment handles are temporarily removed.
+    await act(() => {
+      root.render(
+        <>
+          <Activity mode="hidden">
+            <Fragment ref={fragmentARef}>
+              <html>
+                <head />
+                <body />
+              </html>
+            </Fragment>
+          </Activity>
+          <Activity mode="hidden">
+            <Fragment ref={fragmentBRef}>
+              <html>
+                <head />
+                <body />
+              </html>
+            </Fragment>
+          </Activity>
+        </>,
+      );
+    });
+    expect(activeTargets.has(document.documentElement)).toBe(true);
+
+    // Permanently delete A while B remains hidden. B still retains the same
+    // cached observer relationship, so A must not cancel the platform target.
+    await act(() => {
+      root.render(
+        <Activity mode="hidden">
+          <Fragment ref={fragmentBRef}>
             <html>
               <head />
               <body />
             </html>
           </Fragment>
-        </>,
-      );
-    });
-    visibleFragmentRef.current.observeUsing(observer);
-    expect(activeTargets.has(document.documentElement)).toBe(true);
-
-    await act(() => {
-      root.render(
-        <Fragment ref={visibleFragmentRef}>
-          <html>
-            <head />
-            <body />
-          </html>
-        </Fragment>,
+        </Activity>,
       );
     });
 
-    // The hidden Fragment's ownership ended, but the visible Fragment still
-    // uses the same cached platform observer for the persistent singleton.
-    expect(visibleFragmentRef.current).not.toBe(null);
     expect(activeTargets.has(document.documentElement)).toBe(true);
   });
 });
