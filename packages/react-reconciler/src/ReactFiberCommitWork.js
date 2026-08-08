@@ -1528,7 +1528,7 @@ function commitDeletionEffectsOnFiber(
           safelyDetachRef(deletedFiber, nearestMountedAncestor);
         }
         if (enableFragmentRefs) {
-          commitFragmentInstanceDeletionEffects(deletedFiber);
+          commitFragmentInstanceDeletionEffects(deletedFiber, true);
         }
 
         const prevHostParent = hostParent;
@@ -1566,7 +1566,7 @@ function commitDeletionEffectsOnFiber(
         (deletedFiber.tag === HostComponent ||
           (enableFragmentRefsTextNodes && deletedFiber.tag === HostText))
       ) {
-        commitFragmentInstanceDeletionEffects(deletedFiber);
+        commitFragmentInstanceDeletionEffects(deletedFiber, true);
       }
       // Intentional fallthrough to next branch
     }
@@ -3108,7 +3108,7 @@ function disappearLayoutEffects(
           finishedWork.tag === HostSingleton ||
           (enableFragmentRefsTextNodes && finishedWork.tag === HostText))
       ) {
-        commitFragmentInstanceDeletionEffects(finishedWork);
+        commitFragmentInstanceDeletionEffects(finishedWork, false);
       }
 
       recursivelyTraverseDisappearLayoutEffects(
