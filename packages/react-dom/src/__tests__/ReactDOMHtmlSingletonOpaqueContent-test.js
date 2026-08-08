@@ -34,7 +34,6 @@ describe('html HostSingleton opaque child content', () => {
     global.Event = jsdom.window.Event;
   });
 
-  // @gate enableHostSingletons
   it('preserves the persistent head and body identities when html owns direct HTML', async () => {
     const documentElement = document.documentElement;
     const head = document.head;
