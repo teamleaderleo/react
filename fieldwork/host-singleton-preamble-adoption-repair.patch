@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
 --- a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
 +++ b/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js
-@@ -753,16 +753,28 @@ export function completeResumableState(resumableState: ResumableState): void {
+@@ -753,16 +753,27 @@ export function completeResumableState(resumableState: ResumableState): void {
    resumableState.bootstrapModules = undefined;
  }
  
@@ -29,7 +29,7 @@ diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/pack
    };
  }
  
-@@ -3738,6 +3750,7 @@ function pushTitleImpl(
+@@ -3738,6 +3749,7 @@ function pushTitleImpl(
  const headPreambleContributionChunk = stringToPrecomputedChunk('<!--head-->');
  const bodyPreambleContributionChunk = stringToPrecomputedChunk('<!--body-->');
  const htmlPreambleContributionChunk = stringToPrecomputedChunk('<!--html-->');
@@ -37,7 +37,7 @@ diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/pack
  
  function pushStartHead(
    target: Array<Chunk | PrecomputedChunk>,
-@@ -3758,6 +3771,10 @@ function pushStartHead(
+@@ -3758,6 +3770,10 @@ function pushStartHead(
  
      // Insert a marker in the body where the contribution to the head was in case we need to clear it.
      if (preambleState !== null) {
@@ -48,7 +48,7 @@ diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/pack
        target.push(headPreambleContributionChunk);
      }
  
-@@ -3789,6 +3806,10 @@ function pushStartBody(
+@@ -3789,6 +3805,10 @@ function pushStartBody(
  
      // Insert a marker in the body where the contribution to the body tag was in case we need to clear it.
      if (preambleState !== null) {
@@ -59,7 +59,7 @@ diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/pack
        target.push(bodyPreambleContributionChunk);
      }
  
-@@ -3820,6 +3841,10 @@ function pushStartHtml(
+@@ -3820,6 +3840,10 @@ function pushStartHtml(
  
      // Insert a marker in the body where the contribution to the head was in case we need to clear it.
      if (preambleState !== null) {
@@ -70,7 +70,7 @@ diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/pack
        target.push(htmlPreambleContributionChunk);
      }
  
-@@ -4497,14 +4522,41 @@ export function hoistPreambleState(
+@@ -4497,12 +4521,33 @@ export function hoistPreambleState(
  ) {
    const rootPreamble = renderState.preamble;
 -  if (rootPreamble.htmlChunks === null && preambleState.htmlChunks) {
