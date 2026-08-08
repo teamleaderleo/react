@@ -190,34 +190,28 @@ describe('ViewTransition image wait cleanup', () => {
     expectTemporaryListenerCounts(activeListeners, 0, 0);
   });
 
-  it(
-    'removes both temporary listeners when the transition wait times out',
-    async () => {
-      const image = createPendingImage();
-      const activeListeners = trackTemporaryListeners(image);
+  it('removes both temporary listeners when the transition wait times out', async () => {
+    const image = createPendingImage();
+    const activeListeners = trackTemporaryListeners(image);
 
-      const updateResult = beginTransition([image]);
-      expectTemporaryListenerCounts(activeListeners, 1, 1);
+    const updateResult = beginTransition([image]);
+    expectTemporaryListenerCounts(activeListeners, 1, 1);
 
-      jest.advanceTimersByTime(500);
-      await updateResult;
+    jest.advanceTimersByTime(500);
+    await updateResult;
 
-      expectTemporaryListenerCounts(activeListeners, 0, 0);
-    },
-  );
+    expectTemporaryListenerCounts(activeListeners, 0, 0);
+  });
 
-  it(
-    'removes earlier image listeners when the byte budget abandons image waits',
-    () => {
-      const first = createPendingImage();
-      const tooLarge = createPendingImage(2000, 2000);
-      const firstListeners = trackTemporaryListeners(first);
-      const tooLargeListeners = trackTemporaryListeners(tooLarge);
+  it('removes earlier image listeners when the byte budget abandons image waits', () => {
+    const first = createPendingImage();
+    const tooLarge = createPendingImage(2000, 2000);
+    const firstListeners = trackTemporaryListeners(first);
+    const tooLargeListeners = trackTemporaryListeners(tooLarge);
 
-      beginTransition([first, tooLarge]);
+    beginTransition([first, tooLarge]);
 
-      expectTemporaryListenerCounts(firstListeners, 0, 0);
-      expectTemporaryListenerCounts(tooLargeListeners, 0, 0);
-    },
-  );
+    expectTemporaryListenerCounts(firstListeners, 0, 0);
+    expectTemporaryListenerCounts(tooLargeListeners, 0, 0);
+  });
 });
