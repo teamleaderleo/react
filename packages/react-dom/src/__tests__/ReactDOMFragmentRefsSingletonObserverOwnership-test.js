@@ -125,6 +125,24 @@ describe('FragmentRefs hidden observer ownership', () => {
     // Deleting A releases only A's logical ownership. B remains hidden and
     // still owns the same observer-target pair, so platform observation stays.
     expect(activeTargets.has(document.documentElement)).toBe(true);
+    expect(fragmentBRef.current).toBe(null);
+
+    // Reappearing B restores its ref and observer effects without acquiring a
+    // second logical ownership count for the same observer-target pair.
+    await act(() => {
+      root.render(
+        <Activity mode="visible">
+          <Fragment ref={fragmentBRef}>
+            <html>
+              <head />
+              <body />
+            </html>
+          </Fragment>
+        </Activity>,
+      );
+    });
+    expect(fragmentBRef.current).not.toBe(null);
+    expect(activeTargets.has(document.documentElement)).toBe(true);
 
     fragmentBRef.current.unobserveUsing(observer);
     expect(activeTargets.has(document.documentElement)).toBe(false);
