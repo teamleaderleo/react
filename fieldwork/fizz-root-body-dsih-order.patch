@@ -17,7 +17,7 @@ diff --git a/packages/react-dom-bindings/src/server/ReactFizzConfigDOM.js b/pack
  ): ReactNodeList {
    target.push(startChunkForTag(tag));
  
-@@ -3990,7 +3992,11 @@ function pushStartSingletonElement(
+@@ -3990,6 +3992,10 @@ function pushStartSingletonElement(
    pushViewTransitionAttributes(target, formatContext);
  
    target.push(endOfStartTag);
