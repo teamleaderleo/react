@@ -1,0 +1,288 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOMSingletonComponents-test.js
+@@ -490,6 +490,282 @@ describe('ReactDOM HostSingleton', () => {
+     body.dispatchEvent(new document.defaultView.Event('scroll'));
+     expect(onScroll).toHaveBeenCalledTimes(2);
+   });
++
++  it(
++    'releases the previous singleton props when an Activity becomes hidden',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-before-hide="before" />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++      expect(body.getAttribute('data-before-hide')).toBe('before');
++
++      root.render(
++        <React.Activity mode="hidden">
++          <html>
++            <head />
++            <body data-during-hide="during" />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      expect(body.hasAttribute('data-before-hide')).toBe(false);
++      expect(body.hasAttribute('data-during-hide')).toBe(false);
++    },
++  );
++
++  it(
++    'does not let a hidden singleton update mutate the visible owner',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++      const hiddenInitialClick = jest.fn();
++      const hiddenUpdateClick = jest.fn();
++      const visibleClick = jest.fn();
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-owner="hidden" onClick={hiddenInitialClick} />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++      expect(body.getAttribute('data-owner')).toBe('hidden');
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body data-owner="hidden" onClick={hiddenInitialClick} />
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body data-owner="visible" onClick={visibleClick} />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++      expect(body.getAttribute('data-owner')).toBe('visible');
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body data-owner="hidden-update" onClick={hiddenUpdateClick} />
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body data-owner="visible" onClick={visibleClick} />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++
++      expect(body.getAttribute('data-owner')).toBe('visible');
++      body.dispatchEvent(
++        new document.defaultView.MouseEvent('click', {bubbles: true}),
++      );
++      expect(visibleClick).toHaveBeenCalledTimes(1);
++      expect(hiddenInitialClick).toHaveBeenCalledTimes(0);
++      expect(hiddenUpdateClick).toHaveBeenCalledTimes(0);
++    },
++  );
++
++  it(
++    'does not release a hidden singleton again when it is deleted',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++      const hiddenClick = jest.fn();
++      const visibleClick = jest.fn();
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-owner="hidden" onClick={hiddenClick} />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body data-owner="hidden" onClick={hiddenClick} />
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body data-owner="visible" onClick={visibleClick} />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++      expect(body.getAttribute('data-owner')).toBe('visible');
++
++      root.render(
++        <html>
++          <head />
++          <body data-owner="visible" onClick={visibleClick} />
++        </html>,
++      );
++      await waitForAll([]);
++
++      expect(body.getAttribute('data-owner')).toBe('visible');
++      body.dispatchEvent(
++        new document.defaultView.MouseEvent('click', {bubbles: true}),
++      );
++      expect(visibleClick).toHaveBeenCalledTimes(1);
++      expect(hiddenClick).toHaveBeenCalledTimes(0);
++    },
++  );
++
++  it(
++    'reacquires the latest singleton props after hidden updates',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++      const initialClick = jest.fn();
++      const latestClick = jest.fn();
++      const visibleClick = jest.fn();
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-owner="activity-initial" onClick={initialClick} />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body data-owner="activity-initial" onClick={initialClick} />
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body data-owner="visible" onClick={visibleClick} />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body data-owner="activity-latest" onClick={latestClick} />
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body data-owner="visible" onClick={visibleClick} />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++      expect(body.getAttribute('data-owner')).toBe('visible');
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body data-owner="activity-latest" onClick={latestClick} />
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      expect(body.getAttribute('data-owner')).toBe('activity-latest');
++      body.dispatchEvent(
++        new document.defaultView.MouseEvent('click', {bubbles: true}),
++      );
++      expect(latestClick).toHaveBeenCalledTimes(1);
++      expect(initialClick).toHaveBeenCalledTimes(0);
++      expect(visibleClick).toHaveBeenCalledTimes(0);
++    },
++  );
++
++  it(
++    'restores hidden singleton children after another owner used direct HTML',
++    async () => {
++      const root = ReactDOMClient.createRoot(document);
++      const body = document.body;
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body>
++              <div id="activity-child">activity child</div>
++            </body>
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++      const activityChild = document.getElementById('activity-child');
++      expect(activityChild).not.toBe(null);
++
++      root.render(
++        <>
++          <React.Activity mode="hidden">
++            <html>
++              <head />
++              <body>
++                <div id="activity-child">activity child</div>
++              </body>
++            </html>
++          </React.Activity>
++          <html>
++            <head />
++            <body
++              dangerouslySetInnerHTML={{__html: '<p id="visible-html">visible</p>'}}
++            />
++          </html>
++        </>,
++      );
++      await waitForAll([]);
++      expect(document.getElementById('visible-html')).not.toBe(null);
++
++      root.render(
++        <React.Activity mode="visible">
++          <html>
++            <head />
++            <body>
++              <div id="activity-child">activity child</div>
++            </body>
++          </html>
++        </React.Activity>,
++      );
++      await waitForAll([]);
++
++      expect(document.getElementById('visible-html')).toBe(null);
++      expect(document.getElementById('activity-child')).toBe(activityChild);
++      expect(body.contains(activityChild)).toBe(true);
++    },
++  );
+ 
+   // @gate __DEV__
+   it('does not release or reacquire singletons when double invoking effects during hydration', async () => {

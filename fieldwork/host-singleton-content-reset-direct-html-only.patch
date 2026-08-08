@@ -1,0 +1,11 @@
+diff --git a/packages/react-reconciler/src/ReactFiberBeginWork.js b/packages/react-reconciler/src/ReactFiberBeginWork.js
+--- a/packages/react-reconciler/src/ReactFiberBeginWork.js
++++ b/packages/react-reconciler/src/ReactFiberBeginWork.js
+@@ -2090,6 +2090,7 @@ function updateHostSingleton(
+   if (
+     workInProgress.type !== 'html' &&
+     prevProps !== null &&
++    prevProps.children == null &&
+     shouldSetTextContent(workInProgress.type, prevProps) &&
+     !shouldSetTextContent(workInProgress.type, nextProps)
+   ) {

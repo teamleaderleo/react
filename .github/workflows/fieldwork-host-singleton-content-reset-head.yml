@@ -1,0 +1,99 @@
+name: Fieldwork HostSingleton ownership and content reset
+
+on:
+  pull_request:
+    branches:
+      - repair/host-singleton-content-reset
+  workflow_dispatch:
+
+concurrency:
+  group: fieldwork-host-singleton-ownership
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  current-content-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight regression matrix
+        run: git apply --check fieldwork/host-singleton-content-reset-regression-matrix.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply regression matrix
+        run: git apply fieldwork/host-singleton-content-reset-regression-matrix.patch
+      - name: Run current candidate against matrix
+        run: yarn test --dev ReactDOMSingletonComponents-test
+
+  prechild-direct-html:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight candidate and matrix
+        run: |
+          git apply --check fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply --check fieldwork/host-singleton-content-reset-regression-matrix.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply candidate and matrix
+        run: |
+          git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
+          git apply fieldwork/host-singleton-content-reset-regression-matrix.patch
+      - name: Run focused dev suite
+        run: yarn test --dev ReactDOMSingletonComponents-test
+      - name: Run focused prod suite
+        run: yarn test --prod ReactDOMSingletonComponents-test
+      - name: Run lint gate
+        run: yarn linc
+
+  offscreen-ownership-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight ownership controls
+        run: git apply --check fieldwork/host-singleton-offscreen-ownership.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply ownership controls
+        run: git apply fieldwork/host-singleton-offscreen-ownership.patch
+      - name: Run current ownership behavior
+        run: yarn test --dev ReactDOMSingletonComponents-test
+
+  offscreen-ownership-repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight ownership repair
+        run: |
+          git apply --check fieldwork/host-singleton-offscreen-ownership-repair.patch
+          git apply --check fieldwork/host-singleton-offscreen-ownership.patch
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Apply ownership repair and controls
+        run: |
+          git apply fieldwork/host-singleton-offscreen-ownership-repair.patch
+          git apply fieldwork/host-singleton-offscreen-ownership.patch
+      - name: Run focused dev suite
+        run: yarn test --dev ReactDOMSingletonComponents-test
+      - name: Run focused prod suite
+        run: yarn test --prod ReactDOMSingletonComponents-test
+      - name: Run lint gate
+        run: yarn linc
