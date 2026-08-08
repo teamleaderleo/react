@@ -1,0 +1,86 @@
+diff --git a/packages/react-dom/src/__tests__/ReactDOM-test.js b/packages/react-dom/src/__tests__/ReactDOM-test.js
+--- a/packages/react-dom/src/__tests__/ReactDOM-test.js
++++ b/packages/react-dom/src/__tests__/ReactDOM-test.js
+@@ -981,2 +981,82 @@ describe('ReactDOM', () => {
+   });
++  it(
++    'does not let a suspended primary body overwrite the visible fallback owner',
++    async () => {
++      let resolvePrimary;
++      let pendingPrimary = null;
++      const primaryClick = jest.fn();
++      const fallbackClick = jest.fn();
++
++      function Blocker() {
++        if (pendingPrimary !== null) {
++          React.use(pendingPrimary);
++        }
++        return null;
++      }
++
++      function App({primaryOwner}) {
++        return (
++          <React.Suspense
++            fallback={
++              <html data-owner="fallback-html">
++                <head />
++                <body data-owner="fallback" onClick={fallbackClick}>
++                  <button id="fallback-owner-button">fallback</button>
++                </body>
++              </html>
++            }>
++            <html data-owner="primary-html">
++              <head />
++              <body data-owner={primaryOwner} onClick={primaryClick}>
++                <button id="primary-owner-button">primary</button>
++              </body>
++            </html>
++            <Blocker />
++          </React.Suspense>
++        );
++      }
++
++      const root = ReactDOMClient.createRoot(document);
++      await act(() => {
++        root.render(<App primaryOwner="primary" />);
++      });
++      expect(document.body.getAttribute('data-owner')).toBe('primary');
++
++      pendingPrimary = new Promise(resolve => {
++        resolvePrimary = resolve;
++      });
++      await act(() => {
++        root.render(<App primaryOwner="primary" />);
++      });
++      expect(document.body.getAttribute('data-owner')).toBe('fallback');
++
++      await act(() => {
++        root.render(<App primaryOwner="hidden-update" />);
++      });
++
++      expect(document.body.getAttribute('data-owner')).toBe('fallback');
++      const fallbackButton = document.getElementById('fallback-owner-button');
++      expect(fallbackButton).not.toBe(null);
++      fallbackButton.dispatchEvent(
++        new MouseEvent('click', {bubbles: true}),
++      );
++      expect(fallbackClick).toHaveBeenCalledTimes(1);
++      expect(primaryClick).toHaveBeenCalledTimes(0);
++
++      await act(() => {
++        resolvePrimary();
++      });
++
++      expect(document.body.getAttribute('data-owner')).toBe('hidden-update');
++      const primaryButton = document.getElementById('primary-owner-button');
++      expect(primaryButton).not.toBe(null);
++      primaryButton.dispatchEvent(
++        new MouseEvent('click', {bubbles: true}),
++      );
++      expect(primaryClick).toHaveBeenCalledTimes(1);
++      expect(fallbackClick).toHaveBeenCalledTimes(1);
++
++      root.unmount();
++    },
++  );
+ });
