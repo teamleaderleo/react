@@ -1,0 +1,26 @@
+name: Fieldwork Flight debug terminal consistency
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-flight-debug-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Run focused Flight debug terminal controls
+        run: yarn test --dev ReactFlightDebugTerminalConsistency-test
+      - name: Diff hygiene
+        run: git diff --check
