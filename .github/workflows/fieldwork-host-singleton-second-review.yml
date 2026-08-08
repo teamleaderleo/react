@@ -35,7 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Preflight refined direct-content candidate and head pressure test
+      - name: Preflight refined direct-content candidate and head pressure tests
         run: |
           git apply --check fieldwork/host-singleton-content-reset-prechild-direct-html.patch
           git apply --check fieldwork/host-singleton-second-review-head-hoistable.patch
@@ -45,12 +45,12 @@ jobs:
           cache: yarn
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-      - name: Apply candidate and head pressure test
+      - name: Apply candidate and head pressure tests
         run: |
           git apply fieldwork/host-singleton-content-reset-prechild-direct-html.patch
           git apply fieldwork/host-singleton-second-review-head-hoistable.patch
-      - name: Run focused head pressure test
-        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="preserves a stable hoistable when head leaves direct HTML"
+      - name: Run focused head ownership tests
+        run: yarn test --dev ReactDOMSingletonComponents-test --testNamePattern="stable hoistable"
 
   hidden-mutation-pressure:
     runs-on: ubuntu-latest
