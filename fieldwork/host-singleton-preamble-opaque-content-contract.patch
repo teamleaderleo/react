@@ -1,7 +1,7 @@
 diff --git a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
 --- a/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
 +++ b/packages/react-dom/src/__tests__/ReactDOMFizzServer-test.js
-@@ -9357,6 +9357,183 @@ describe('ReactDOMFizzServer', () => {
+@@ -9357,6 +9357,180 @@ describe('ReactDOMFizzServer', () => {
      );
    });
  
