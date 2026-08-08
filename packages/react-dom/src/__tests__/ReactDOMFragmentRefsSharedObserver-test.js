@@ -30,15 +30,20 @@ describe('FragmentRefs shared observer ownership', () => {
     document.body.removeChild(container);
   });
 
-  // @gate enableFragmentRefs
-  it('preserves a shared observer target owned by another nested Fragment', async () => {
-    const parentRef = React.createRef();
-    const childRef = React.createRef();
+  function createTrackedObserver() {
     const activeTargets = new Set();
     const observer = {
       observe: jest.fn(target => activeTargets.add(target)),
       unobserve: jest.fn(target => activeTargets.delete(target)),
     };
+    return {observer, activeTargets};
+  }
+
+  // @gate enableFragmentRefs
+  it('preserves a shared observer target owned by another nested Fragment', async () => {
+    const parentRef = React.createRef();
+    const childRef = React.createRef();
+    const {observer, activeTargets} = createTrackedObserver();
 
     const root = ReactDOMClient.createRoot(container);
     await act(() => {
@@ -61,5 +66,46 @@ describe('FragmentRefs shared observer ownership', () => {
     // The parent Fragment still logically uses the same cached observer for
     // this target, so releasing only the child Fragment must not cancel it.
     expect(activeTargets.has(target)).toBe(true);
+  });
+
+  // @gate enableFragmentRefs
+  it('releases a removed child when the Fragment is later unobserved', async () => {
+    const fragmentRef = React.createRef();
+    const {observer, activeTargets} = createTrackedObserver();
+    const root = ReactDOMClient.createRoot(container);
+
+    function App({showChild}) {
+      return (
+        <Fragment ref={fragmentRef}>
+          {showChild ? <div id="removed-target" /> : null}
+          <div id="remaining-target" />
+        </Fragment>
+      );
+    }
+
+    await act(() => {
+      root.render(<App showChild={true} />);
+    });
+    const removedTarget = container.querySelector('#removed-target');
+    const remainingTarget = container.querySelector('#remaining-target');
+    fragmentRef.current.observeUsing(observer);
+    expect(activeTargets.has(removedTarget)).toBe(true);
+    expect(activeTargets.has(remainingTarget)).toBe(true);
+
+    await act(() => {
+      root.render(<App showChild={false} />);
+    });
+
+    // React intentionally leaves a removed child observed long enough for the
+    // observer to report its removal transition.
+    expect(activeTargets.has(removedTarget)).toBe(true);
+
+    fragmentRef.current.unobserveUsing(observer);
+
+    // Once the caller explicitly unobserves the Fragment, every target that
+    // React observed for that Fragment should be released, including children
+    // that were removed earlier and are no longer reachable by tree traversal.
+    expect(activeTargets.has(removedTarget)).toBe(false);
+    expect(activeTargets.has(remainingTarget)).toBe(false);
   });
 });
