@@ -1,0 +1,27 @@
+name: Fieldwork DevTools BFCache shutdown fanout red control
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-red-control:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'research/devtools-bfcache-shutdown-fanout'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/devtools-bfcache-shutdown-fanout
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Focused backend-manager pagehide shutdown fanout
+        run: yarn test --dev backendManagerPageHide-test --runInBand
