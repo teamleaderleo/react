@@ -1,0 +1,27 @@
+name: Fieldwork DevTools Agent shutdown fanout red control
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  focused-red-control:
+    if: >-
+      github.repository == 'teamleaderleo/react' &&
+      github.event.pull_request.head.ref == 'research/devtools-agent-shutdown-fanout'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: research/devtools-agent-shutdown-fanout
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - name: Focused backend renderer cleanup fanout
+        run: yarn test --dev backendShutdown-test --runInBand
