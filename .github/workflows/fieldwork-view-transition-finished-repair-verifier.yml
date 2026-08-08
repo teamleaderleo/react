@@ -59,6 +59,10 @@ jobs:
         run: yarn test --prod ReactDOMViewTransitionFinishedCleanup-test --runInBand
       - name: Diff hygiene
         run: git diff --check
+      - name: Prepare formatter base ref
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git branch -f main origin/main
       - name: Prettier check
         run: >-
           yarn prettier
