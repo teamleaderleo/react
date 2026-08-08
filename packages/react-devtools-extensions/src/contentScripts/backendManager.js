@@ -57,6 +57,7 @@ function handlePageHide() {
 function welcome(event: $FlowFixMe) {
   if (
     event.source !== window ||
+    !event.data ||
     event.data.source !== 'react-devtools-content-script'
   ) {
     return;
