@@ -69,10 +69,9 @@ if (!__EXPERIMENTAL__) {
       }
 
       await expect(
-        ReactMarkup.experimental_renderToHTML(
-          React.createElement(Component),
-          {signal},
-        ),
+        ReactMarkup.experimental_renderToHTML(React.createElement(Component), {
+          signal,
+        }),
       ).rejects.toBe(expectedError);
 
       expect(listeners.size).toBe(0);
